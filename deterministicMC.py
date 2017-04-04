@@ -10,7 +10,6 @@ class Task(object):
         self.phase = phase
         self.deadline = deadline
         self.c = {'HI': c_hi, 'LO': c_lo}
-        self.response_time = -1
 
 
 def min_crit(c1, c2):
@@ -41,10 +40,18 @@ def solve_response_time(task, task_set):
 
     return r_i
 
+
+def response_time_analysis(task_set):
+    """SMC RTA, as mentioned by Baruah et al."""
+    for tau in task_set:
+        if solve_response_time(tau, task_set) > tau.deadline:
+            return False
+    return True
+
 # Sample task set:
 t1 = Task('LO', 1, 2, 0, 2, 1, 1)
 t2 = Task('HI', 2, 10, 0, 10, 2, 1)
 t3 = Task('HI', 3, 100, 0, 100, 20, 20)
-task_set = [t1, t2, t3]
+sample_set = [t1, t2, t3]
 
-print(solve_response_time(t3, task_set))
+print(response_time_analysis(sample_set))
