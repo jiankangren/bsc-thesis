@@ -1,27 +1,15 @@
+from taskset_class_lib import Task, TaskSet
 from math import ceil
-
-
-class Task(object):
-    """Input for the analysis."""
-    def __init__(self, criticality, period, phase, deadline, c_hi, c_lo, priority):
-        self.criticality = criticality
-        self.period = period
-        self.phase = phase
-        self.deadline = deadline
-        self.c = {'HI': c_hi, 'LO': c_lo}
-        self.priority = priority
+import taskset_generation as gen
 
 
 def initialize_task_set(path):
     """Reads task set from path."""
     # Sample task set:
-    t1 = Task('LO', 2, 0, 2, 1, 1, 1)
-    t2 = Task('HI', 10, 0, 10, 5, 1, 2)
-    t3 = Task('HI', 100, 0, 100, 20, 20, 3)
-    return[t1, t2, t3]
+    return gen.mc_fairgen_modified(n_sets=1)
 
 
-def scheduling_analysis_smc(task_set):
+def scheduling_analysis_smc(task_set: TaskSet):
     """SMC Response Time Analysis, as mentioned in [2]."""
 
     def min_crit(c1, c2):
@@ -144,8 +132,8 @@ def scheduling_analysis(task_set_path, scheme):
     else:
         pass
 
-print(scheduling_analysis("", 'smc'))
-print(scheduling_analysis("", 'amc'))
+# print(scheduling_analysis("", 'smc'))
+# print(scheduling_analysis("", 'amc'))
 print(scheduling_analysis("", 'edf-vd'))
 
 """
