@@ -4,15 +4,23 @@ Matlab: https://www.mathworks.com/matlabcentral/fileexchange/9700-random-vectors
 Python: https://github.com/brandenburg/schedcat/blob/master/schedcat/generator/generator_emstada.py"""
 
 import numpy
+from math import floor, ceil
 
-def StaffordRandFixedSum(n, u, nsets):
+def StaffordRandFixedSum_modified(n, u, nsets, a, b):
+
+    # Check the arguments.
+    if (n != round(n)) or (nsets != round(nsets)) or (nsets < 0) or (n < 1):
+        print('n must be a whole number and m a non-negative integer.')
+    elif (u < n * a) or (u > n * b) or (a >= b):
+        print('Inequalities n * a <= u <= nsets * b and a < b must hold.', n, u, nsets, a, b)
 
     #deal with n=1 case
     if n == 1:
         return numpy.tile(numpy.array([u]),[nsets,1])
 
     k = numpy.floor(u)
-    s = u
+    # s = u  # Staffords Version
+    s = (u - n * a) / (b - a)  # Modified to include parameters a and b. (L. Stalder, 2017)
     step = 1 if k < (k-n+1) else -1
     s1 = s - numpy.arange( k, (k-n+1)+step, step )
     step = 1 if (k+n) < (k-n+1) else -1
@@ -22,7 +30,7 @@ def StaffordRandFixedSum(n, u, nsets):
     huge = numpy.finfo(float).max
 
     w = numpy.zeros((n, n+1))
-    w[0,1] = huge
+    w[0, 1] = huge
     t = numpy.zeros((n-1,n))
 
     for i in numpy.arange(2, (n+1)):
@@ -35,6 +43,8 @@ def StaffordRandFixedSum(n, u, nsets):
 
     m = nsets
     x = numpy.zeros((n,m))
+    if m == 0:
+        return
     rt = numpy.random.uniform(size=(n-1,m)) #rand simplex type
     rs = numpy.random.uniform(size=(n-1,m)) #rand position in simplex
     s = numpy.repeat(s, m);
@@ -47,15 +57,17 @@ def StaffordRandFixedSum(n, u, nsets):
         sx = rs[(n-i)-1,...] ** (1/float(i)) #next simplex coord
         sm = sm + (1-sx) * pr * s/float(i+1)
         pr = sx * pr
-        x[(n-i)-1,...] = sm + pr * e
+        x[(n-i)-1, ...] = sm + pr * e
         s = s - e
-        j = j - e #change transition table column if required
+        j = j - e  # change transition table column if required
 
-    x[n-1,...] = sm + pr * s
+    x[n-1, ...] = sm + pr * s
 
     #iterated in fixed dimension order but needs to be randomised
     #permute x row order within each column
     for i in range(0,m):                            # Adjusted xrange to range for Python 3 (L. Stalder, 2017)
-        x[...,i] = x[numpy.random.permutation(n),i]
+        x[...,i] = x[numpy.random.permutation(n), i]
 
-    return numpy.transpose(x);
+    # Rescale and return: (L. Stalder, 2017)
+    x = (b - a)*x + a
+    return numpy.transpose(x)
