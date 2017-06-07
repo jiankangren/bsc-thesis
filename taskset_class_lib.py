@@ -4,12 +4,17 @@ import matplotlib.pyplot as plt
 from functools import reduce
 
 
-
-
 class Task(object):
     """Input for the analysis."""
-    def __init__(self, task_id, criticality, period, deadline, c_hi=None, u_hi=None, c_lo=None, u_lo=None,
-                 phase=None, priority=None):
+    def __init__(self,
+                 task_id,
+                 criticality,
+                 period,
+                 deadline,
+                 u_lo=None, c_lo=None,
+                 u_hi=None, c_hi=None,
+                 phase=None,
+                 priority=None):
         self.task_id = task_id
         self.criticality = criticality
         self.period = period
@@ -40,8 +45,7 @@ class TaskSet(object):
         self.u_hi = sum([float(t.c['HI']) / t.period for t in self.tasks.values() if t.criticality == 'HI'])
         self.description = "Task Set {0}: {1} LO task(s) @ {3} util, {2} HI task(s) @ {4} util."\
             .format(self.id, self.n_lo, self.n_hi, self.u_lo, self.u_hi)
-        self.hyperperiod = lcm([t.period for t in self.tasks.values()])
-
+        self.hyperperiod = lcm([t.period for t in self.tasks.values()])  # TODO: Add lazy evaluation
 
     def draw(self):
         fig = plt.figure()
@@ -55,11 +59,9 @@ class TaskSet(object):
             if t.criticality == 'HI':
                 plt.axvline(t.c['HI'], color='red', linestyle='--')
 
-        #plt.figlegend(handles=[])
         plt.subplots_adjust(hspace=0.5)
         fig.suptitle(self.description)
         plt.show()
-
 
     def assign_priorities_rm(self):
         tasks = sorted(self.tasks.values(), key=lambda t: t.period, reverse=True)

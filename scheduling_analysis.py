@@ -3,17 +3,78 @@ from math import ceil
 import taskset_generation as gen
 import scipy.signal as sig
 import matplotlib.pyplot as plt
-from operator import itemgetter
+import matplotlib.animation as animation
+
+
+class BacklogSim(object):
+    """Backlog simulation class
+    
+    """
+
+    def __init__(self,
+                 task_set,  # Complete task set, needs priorities and release times
+                 p=0,  # P-Level of backlog
+                 ):
+        self.task_set = task_set
+        self.p = p
+        self.k = 0  # Number of completed hyperperiods
+        self.t = 0  # Elapsed time in current hyperperiod
+        self.backlog = [1.0]
+
+        # Build timeline of one full hyperperiod
+        self.timeline = []
+        for task in self.task_set.tasks.values():
+            self.timeline.extend([{'t': t, 'task': task} for t in task.rel_times
+                                  if task.priority >= self.p])
+        self.timeline.sort(key=lambda x: x['t'])
+        print("Timeline:", self.timeline)
+
+        self.jobs_remaining = list(self.timeline)  # Store a copy
+
+    def step(self, dt=None):
+        """Advance the model by dt time units. Perform convolution and shrinking where necessary.
+        If no dt is given, step to the next job release."""
+        if dt is None:
+            if not self.jobs_remaining:
+                dt = self.task_set.hyperperiod - self.t  # Step to end of hyperperiod if no remaining jobs
+            else:
+                dt = self.jobs_remaining[0]['t'] - self.t
+
+        while True:
+            if not self.jobs_remaining:  # No more new jobs in this hyperperiod
+                time_remaining = self.task_set.hyperperiod - self.t
+                if dt < time_remaining:  # Step does not reach end of hyperperiod
+                    self.backlog = shrink(self.backlog, dt)
+                    self.t += dt
+                    return
+                else:  # Step reaches / exceeds end of hyperperiod
+                    self.backlog = shrink(self.backlog, time_remaining)
+                    self.k += 1
+                    self.t = 0
+                    self.jobs_remaining = list(self.timeline)
+                    dt -= time_remaining
+                    continue
+            elif dt < self.jobs_remaining[0]['t'] - self.t:  # Step does not reach next job release
+                self.backlog = shrink(self.backlog, dt)
+                self.t += dt
+                return
+            else:  # Step to next job release and continue
+                next_job = self.jobs_remaining.pop(0)
+                self.backlog = shrink(self.backlog, next_job['t'] - self.t)
+                self.backlog = convolve_and_crop(self.backlog, next_job['task'].c_pdf)
+                dt -= next_job['t'] - self.t
+                self.t = next_job['t']
+
 
 def dummy_taskset():
-    t1 = Task(0, 'HI', 15, 10, 9, 0.6, 6, 0.4, 0)
-    t2 = Task(1, 'LO', 12, 8, None, None, 7, 0.583, 0)
+    t1 = Task(task_id=0, criticality='HI', period=12, deadline=10, u_lo=0.5, c_lo=6, u_hi=0.75, c_hi=9, phase=0)
+    t2 = Task(task_id=1, criticality='LO', period=9, deadline=8, u_lo=0.667, c_lo=6, u_hi=None, c_hi=None,
+              phase=0)
     t1.c_pdf = [0.0, 0.0, 0.0, 0.2, 0.4, 0.2, 0.1, 0.05, 0.03, 0.02]
     t2.c_pdf = [0.0, 0.0, 0.0, 0.2, 0.2, 0.2, 0.15, 0.15, 0.1]
     ts = TaskSet(0, {0: t1, 1: t2})
     ts.assign_priorities_rm()
     ts.assign_rel_times()
-    ts.draw()
     return ts
 
 def initialize_task_set(path):
@@ -135,18 +196,11 @@ def scheduling_analysis(task_set_path, scheme):
     """Wrapper function"""
 
     task_set = initialize_task_set(task_set_path)
-    if scheme == 'smc':
-        return scheduling_analysis_smc(task_set)
-    elif scheme == 'amc':
-        return scheduling_analysis_amc(task_set)
-    elif scheme == 'edf-vd':
-        return scheduling_analysis_edf_vd(task_set)
-    # Add new scheduling schemes here.
-    else:
-        pass
+    return scheme(task_set)
 
 
-def convolve_and_crop(a, b, percentile=0.99999):
+
+def convolve_and_crop(a, b, percentile=0.9999999):
     """"""
     # Convolve
     conv = sig.convolve(a, b)
@@ -220,16 +274,56 @@ ts.assign_priorities_rm()
 ts.assign_rel_times()
 ts.draw()
 """
+"""
 ts = dummy_taskset()
+ts.draw()
 log = p_level_backlog(taskset=ts, n=1)
 print(log)
-log = p_level_backlog(taskset=ts, n=20)
+plt.scatter(range(len(log)), log)
+backlog = BacklogSim(task_set=ts)
+backlog.step(ts.hyperperiod)
 print(log)
-plt.bar(range(len(log)), log)
+plt.scatter(range(len(log)), log)
+#plt.semilogy()
 plt.show()
-
+"""
 # print(scheduling_analysis("", 'smc'))
 # print(scheduling_analysis("", 'amc'))
+
+ts = dummy_taskset()
+
+backlog = BacklogSim(task_set=ts)
+dt = 1 # 30 fps
+
+fig = plt.figure()
+ax = fig.add_subplot(111, autoscale_on=False, xlim=(-1, ts.hyperperiod), ylim=(0, 1))
+line, = ax.plot([], [], 'o')
+k_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
+time_text = ax.text(0.02, 0.9, '', transform=ax.transAxes)
+
+
+def init():
+    line.set_data([], [])
+    k_text.set_text('')
+    time_text.set_text('')
+    return line, k_text, time_text
+
+
+def animate(i):
+    print(i)
+    global backlog, dt
+    backlog.step(dt)
+    x_val = range(len(backlog.backlog))
+    y_val = backlog.backlog
+    line.set_data(x_val, y_val)
+    k_text.set_text('hyperperiod = %d' % backlog.k)
+    time_text.set_text('time = %d' % backlog.t)
+    return line, k_text, time_text
+
+
+ani = animation.FuncAnimation(fig, animate, frames=20*ts.hyperperiod, interval=200, blit=True, init_func=init)
+
+plt.show()
 
 """
 Literature:
