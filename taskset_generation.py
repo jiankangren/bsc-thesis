@@ -2,9 +2,9 @@ from taskset_class_lib import Task, TaskSet, WeibullDist
 import matplotlib.pyplot as plt
 from math import ceil
 from math import floor
-from math import gamma as gamma_func
 import numpy as np
 import numpy.random as nprd
+from time import time
 
 
 def randfixedsum(n, u, nsets, a, b):
@@ -95,43 +95,55 @@ def bounded_uniform(u_hi_lo, u_hi_hi, m, n_hi, u_min, u_hi):
     return u_lo
 
 
-def mc_fairgen_modified(
+def mc_fairgen_det(
+        set_id,  # Identifier for newly generated task set
         u_lo=None,  # Normalized (per-core) system utilization in LO-mode
         u_hi=None,  # Normalized (per-core) system utilization in HI-mode
         m=1,  # No. of cores
-        u_min=0.001,  # Minimum per-task utilization
+        u_min=0.01,  # Minimum per-task utilization
         u_max=0.99,  # Maximum per-task utilization
-        max_tasks=20,
+        max_tasks=10,
         periods=None,  # List of possible period values (a default is assigned if this is None)
-        time_granularity=1000,  # Multiplier for smaller discrete time units.
+        time_granularity=100,  # Multiplier for smaller discrete time units.
         implicit_deadlines=False
-) -> {Task}:
-    """Returns a list of tasks, containing at most m*max_tasks."""
+) -> TaskSet:
+    """
+    Returns a set of tasks, containing at most m*max_tasks.
+    
+    Can either be used to generate task sets with specific system utilizations or with random values.
+    """
 
-    if u_hi is None:  # Initialize HI system util
-        u_hi_hi = nprd.uniform(low=0.1, high=1.0)
+    if u_hi is None:
+        u_hi_hi = nprd.uniform(low=max_tasks*u_min, high=1.0)
     else:
         u_hi_hi = u_hi
 
-    u_hi_lo = nprd.uniform(low=0.05, high=u_hi_hi)  # Initialize LO system util
+    p_hi = nprd.randint(1, 10) / 10.0  # percentage of hi-criticality tasks
+    p_lo = 1. - p_hi
+
     if u_lo is None:
-        u_lo_lo = nprd.uniform(low=0.05, high=1.0 - u_hi_lo)
+        u_hi_lo = nprd.uniform(low=max_tasks*p_hi*u_min, high=u_hi_hi)
+        u_lo_lo = nprd.uniform(low=max_tasks*p_lo*u_min, high=1 - u_hi_lo)
     else:
+        u_hi_lo = nprd.uniform(low=max_tasks*p_hi*u_min, high=min(u_hi_hi, u_lo) - max_tasks*p_lo*u_min)
         u_lo_lo = u_lo - u_hi_lo
 
-    p_hi = nprd.randint(1, 10) / 10.0  # percentage of hi-criticality tasks
 
     n_min_hi = int(ceil(u_hi_hi * m / u_max))  # minimum required total tasks
     n_min_lo = int(ceil(u_lo_lo * m / u_max))
     n_min = max(m + 1, int(ceil(n_min_hi / p_hi)), int(ceil(n_min_lo / (1 - p_hi))))
-
-    max_tasks = max(max_tasks, n_min)
+    if n_min > max_tasks:
+        n_min = max_tasks
     n = nprd.randint(n_min, max_tasks * m + 1)  # total numbers of tasks
     n_hi = max(int(p_hi * n), n_min_hi)
     n_lo = n - n_hi
 
+
+    # print("u_hi_hi:%f\nu_hi_lo:%f\nu_lo_lo:%f\np_hi:%f\nn_min_hi:%d\nn_min_lo:%d\nn_min:%d\nn:%d\n"
+    #       "n_hi:%d\nn_lo:%d" % (u_hi_hi, u_hi_lo, u_lo_lo, p_hi, n_min_hi, n_min_lo, n_min, n, n_hi, n_lo))
+
     if periods is None:
-        periods = [1, 2, 3, 4, 5, 6, 12, 15]  # Small hyperperiods with these period values
+        periods = [1, 2, 3, 4, 5, 6, 15]  # Small hyperperiods with these period values
     t = [time_granularity * i for i in nprd.choice(a=periods, size=n)]
     utils_hi = randfixedsum(n=n_hi, u=u_hi_hi * m, nsets=1, a=u_min, b=u_max)[0]
     utils_lo = bounded_uniform(u_hi_lo=u_hi_lo, u_hi_hi=u_hi_hi, m=m, n_hi=n_hi, u_min=u_min, u_hi=utils_hi)
@@ -155,72 +167,79 @@ def mc_fairgen_modified(
         for i in range(n_hi, n):
             d.append(nprd.randint(c_lo[i], t[i]))
 
-    taskset = {}
+    tasks = []
     for i in range(n_hi):
-        taskset[i] = Task(task_id=i, criticality='HI', period=t[i], u_lo=utils_lo[i], c_lo=c_lo[i],
-                          u_hi=utils_hi, c_hi=c_hi[i], deadline=d[i])
+        tasks.append(Task(task_id=i, criticality='HI', period=t[i], u_lo=utils_lo[i], c_lo=c_lo[i],
+                          u_hi=utils_hi, c_hi=c_hi[i], deadline=d[i]))
 
     for i in range(n_hi, n):
-        taskset[i] = Task(task_id=i, criticality='LO', period=t[i], u_lo=utils_lo[i], c_lo=c_lo[i],
-                          deadline=d[i])
-    return taskset
+        tasks.append(Task(task_id=i, criticality='LO', period=t[i], u_lo=utils_lo[i], c_lo=c_lo[i],
+                          deadline=d[i]))
+    return TaskSet(set_id, tasks)
 
 
-def generate_tasksets_det(n_sets=1000) -> [TaskSet]:
-    """Generates deterministic task sets."""
-    tasksets = []
-    for k in range(n_sets):
-        tasksets.append(TaskSet(k, mc_fairgen_modified()))
-    return tasksets
-
-
-def generate_tasksets_stoch(n_sets=1000, m=1, c_lo_percentile=0.999, c_hi_percentile=0.99999) -> [TaskSet]:
-    """"""
-    tasksets = []
-    for k in range(n_sets):
-        while True:
-            ts = mc_fairgen_modified(m=m)
-            u_hi = 0.0
-            for task in ts.values():
-                gamma = nprd.uniform(1.1, 3)
-                weib = WeibullDist(gamma=gamma)
-                weib.rescale_beta(task.c['LO'], c_lo_percentile)
-                if task.criticality == 'HI':
-                    task.c['HI'] = ceil(weib.percentile(c_hi_percentile))
-                    u_hi += float(task.c['HI']) / task.period
-                task.c_pdf = weib.discrete_pd(bound=ceil(weib.percentile(c_hi_percentile)))
-                psum = sum(task.c_pdf)
-                task.c_pdf = [p / psum for p in task.c_pdf]
-            if u_hi <= m * 1.0 and not [t for t in ts.values() if t.criticality == 'HI' and t.c['HI'] > t.deadline]:
-                tasksets.append(TaskSet(set_id=k, tasks=ts))
+def mc_fairgen_stoch(
+        set_id,  # Identifier for newly generated task set
+        u_lo=None,  # Normalized (per-core) system utilization in LO-mode
+        u_hi=None,  # Normalized (per-core) system utilization in HI-mode
+        mode='max',  # Setting whether u_lo is meant to be the maximum (c_lo_percent) or average system utilization
+        m=1,  # No. of cores
+        u_min=0.01,  # Minimum per-task utilization
+        u_max=0.99,  # Maximum per-task utilization
+        max_tasks=10,
+        periods=None,  # List of possible period values (a default is assigned if this is None)
+        time_granularity=100,  # Multiplier for smaller discrete time units.
+        implicit_deadlines=False,
+        distribution_cls=WeibullDist,
+        c_lo_percent=0.999, c_hi_percent=0.99999) -> [TaskSet]:  # TODO Docstring
+    """
+    
+    """
+    start = time()
+    while True:
+        ts = mc_fairgen_det(set_id=set_id,
+                            u_lo=u_lo,
+                            u_hi=u_hi,
+                            m=m,
+                            u_min=u_min,
+                            u_max=u_max,
+                            max_tasks=max_tasks,
+                            periods=periods,
+                            time_granularity=time_granularity,
+                            implicit_deadlines=implicit_deadlines
+                            )
+        for t in ts.tasks:
+            if mode == 'max':
+                distribution = distribution_cls.from_percentile(x=t.c_lo, percentile=c_lo_percent)
+            elif mode == 'avg':
+                distribution = distribution_cls.from_ev(ev=t.c_lo)
+            t.c_lo = ceil(distribution.percentile(p=c_lo_percent))
+            if t.c_lo > t.deadline:
                 break
-    return tasksets
+            if t.criticality == 'HI':
+                t.c_hi = ceil(distribution.percentile(p=c_hi_percent))
+                if t.c_hi > t.deadline:
+                    break
+            cutoff = c_hi_percent if t.criticality == 'HI' else c_lo_percent
+            t.c_pdf = distribution.discrete_pd(cutoff=cutoff)
+        else:
+            stop = time()
+            return ts
 
 
-def generate_tasksets_stoch_(n_sets=1000, m=1, c_lo_percentile=0.999, c_hi_percentile=0.99999) -> [TaskSet]:
-    """"""
-    tasksets = []
-    for k in range(n_sets):
-        while True:
-            ts = mc_fairgen_modified(m=m)
-            u_hi = 0.0
-            for task in ts.values():
-                gamma = nprd.uniform(1.1, 3)
-                weib = WeibullDist(gamma=gamma)
-                weib.rescale_beta(task.c['LO'], c_lo_percentile)
-                if task.criticality == 'HI':
-                    task.c['HI'] = ceil(weib.percentile(c_hi_percentile))
-                    u_hi += float(task.c['HI']) / task.period
-                task.c_pdf = weib.discrete_pd(bound=ceil(weib.percentile(c_hi_percentile)))
-                psum = sum(task.c_pdf)
-                task.c_pdf = [p / psum for p in task.c_pdf]
-            if u_hi <= m * 1.0 and not [t for t in ts.values() if t.criticality == 'HI' and t.c['HI'] > t.deadline]:
-                tasksets.append(TaskSet(set_id=k, tasks=ts))
-                break
-    return tasksets
+if __name__ == '__main__':
+    elapsed = 0
+    for k in range(10):
+        start = time()
+        taskset = mc_fairgen_stoch(set_id=0, u_lo=0.9, mode='max', implicit_deadlines=False,
+                                   u_min=0.01, max_tasks=10, time_granularity=100)
+        stop = time()
+        elapsed += stop - start
+    print(elapsed)
+    taskset.draw(scale='log')
 
 """
-ts = generate_tasksets_stoch(n_sets=100)
+ts = 
 for x in ts:
     print(x.description, x.hyperperiod)
     x.assign_priorities_rm()
