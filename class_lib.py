@@ -57,8 +57,7 @@ class Task(object):  # TODO Docstring for DMP
         self.dmp = []
 
     def plot_c_pdf(self, scale='linear'):
-        """
-        Simple method to display a plot of the task's execution time probability distribution.
+        """Simple method to display a plot of the task's execution time probability distribution.
         
         c_lo and c_hi values are displayed as orange and red dotted lines, respectively.
         
@@ -89,8 +88,7 @@ class Task(object):  # TODO Docstring for DMP
 
 
 class TaskSet(object):
-    """
-    Set of periodic tasks.
+    """Set of periodic tasks.
     
     TaskSet acts as a container class for the Task class introduced above.
     
@@ -116,8 +114,7 @@ class TaskSet(object):
         self.hyperperiod = lcm([t.period for t in self.tasks])  # TODO: Add lazy evaluation
 
     def draw(self, scale='linear'):
-        """
-        Method for displaying a graphic representation of the task set.
+        """Method for displaying a graphic representation of the task set.
         
         Every task is drawn as a subplot with a short description. Orange and red dotted lines correspond to the task's
         c_lo and c_hi values, respectively.
@@ -155,8 +152,7 @@ class TaskSet(object):
             tasks[i].priority = i
 
     def set_rel_times_fp(self):
-        """
-        Builds the list of release times for every task.
+        """Builds the list of release times for every task.
         
         Release times are always relative to one hyperperiod.
         
@@ -169,8 +165,7 @@ class TaskSet(object):
 
 
 class WeibullDist(object):
-    """
-    Example distribution, based on a Weibull Distribution with shape parameter k and scale parameter beta.
+    """Example distribution, based on a Weibull Distribution with shape parameter k and scale parameter beta.
     
     Every method defined here MUST be implemented, if the user chooses to use a custom distribution for task generation.
     
@@ -184,8 +179,7 @@ class WeibullDist(object):
 
     @classmethod
     def from_ev(cls, ev):
-        """
-        Constructor method for fixed expected value.
+        """Constructor method for a given fixed expected value.
         
         Args:
             ev: Desired expected value of the distribution.
@@ -200,8 +194,7 @@ class WeibullDist(object):
 
     @classmethod
     def from_percentile(cls, x, p):
-        """
-        Constructor method for a given fixed percentile.
+        """Constructor method for a given fixed percentile.
         
         Args:
             x: Point of the p-th percentile.
@@ -230,8 +223,7 @@ class WeibullDist(object):
         return self.beta * (math.log(1./(1. - p)))**(1./self.k)
 
     def discrete_pd(self, cutoff):
-        """
-        Method to find a discrete, cropped approximation of the distribution's PDF. 
+        """Method to find a discrete, cropped approximation of the distribution's PDF. 
         
         Args:
             cutoff: Percentile value, at which the approximation should stop. Avoids returning infinitely long arrays.

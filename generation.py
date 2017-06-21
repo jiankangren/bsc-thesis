@@ -12,8 +12,7 @@ from class_lib import Task, TaskSet, WeibullDist
 
 
 def randfixedsum(n, u, nsets, a, b):
-    """
-    Randomly and uniformly generates vectors with a specified sum and values in a specified interval.
+    """Randomly and uniformly generates vectors with a specified sum and values in a specified interval.
     
     All courtesy to P. Emberson, R. Stafford, R. Davis for the randfixedsum algorithm and their implementation in 
     Python. Only minor adjustments have been made and are annotated in the corresponding lines.
@@ -98,8 +97,7 @@ def randfixedsum(n, u, nsets, a, b):
 
 
 def bounded_uniform(u_hi_lo, u_hi_hi, m, n_hi, u_min, u_hi):
-    """
-    Generates a list u_lo of uniformly random values, each corresponding to a value in u_hi, with following conditions:
+    """Generates a list u_lo of uniformly random values, each corresponding to a value in u_hi, with following conditions:
     
     (1) sum(u_lo) is equal to m * u_hi_lo.
     (2) No value in u_lo is larger than its corresponding value in u_hi.
@@ -143,8 +141,7 @@ def mc_fairgen_det(
         time_granularity=100,  # Multiplier for smaller discrete time units.
         implicit_deadlines=False
 ) -> TaskSet:
-    """
-    Returns a fair task set of deterministic tasks.
+    """Returns a fair task set of deterministic tasks.
     
     Can either be used to generate task sets with specific system utilizations or with random values.
     
@@ -244,8 +241,7 @@ def mc_fairgen_stoch(
         implicit_deadlines=False,
         distribution_cls=WeibullDist,
         c_lo_percent=0.999, c_hi_percent=0.99999) -> [TaskSet]:
-    """
-    Returns a fair task set of tasks with stochastic execution times.
+    """Returns a fair task set of tasks with stochastic execution times.
     
     Can either be used to generate task sets with specific system utilizations or with random values.
     
