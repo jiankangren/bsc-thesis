@@ -142,19 +142,19 @@ class TaskSet(object):
         fig.suptitle(self.description)
         plt.show()
 
-    def assign_priorities_rm(self):
+    def set_priorities_rm(self):
         """Fixed priority scheduling. Assigns rate-monotonic priorities (shorter period -> higher priority."""
         tasks = sorted(self.tasks, key=lambda t: t.period, reverse=True)
         for i in range(len(tasks)):
             tasks[i].priority = i
 
-    def assign_priorities_dm(self):
+    def set_priorities_dm(self):
         """Fixed priority scheduling. Assigns deadline-monotonic priorities (shorter deadline -> higher priority."""
         tasks = sorted(self.tasks, key=lambda t: t.deadline, reverse=True)
         for i in range(len(tasks)):
             tasks[i].priority = i
 
-    def assign_rel_times_fp(self):
+    def set_rel_times_fp(self):
         """
         Builds the list of release times for every task.
         
