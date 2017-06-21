@@ -1,0 +1,134 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html><head><title>Python: module analysis</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+</head><body bgcolor="#f0f0f8">
+
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="heading">
+<tr bgcolor="#7799ee">
+<td valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial">&nbsp;<br><big><big><strong>analysis</strong></big></big></font></td
+><td align=right valign=bottom
+><font color="#ffffff" face="helvetica, arial"><a href=".">index</a><br><a href="file:c%3A%5Cusers%5Cluca%5Cpycharmprojects%5Cbsc-thesis%5Canalysis.py">c:\users\luca\pycharmprojects\bsc-thesis\analysis.py</a></font></td></tr></table>
+    <p><tt>This&nbsp;module&nbsp;contains&nbsp;any&nbsp;methods&nbsp;and&nbsp;functions&nbsp;related&nbsp;to&nbsp;the&nbsp;analysis&nbsp;of&nbsp;a&nbsp;task&nbsp;set's&nbsp;schedulability,&nbsp;deadline&nbsp;miss<br>
+probability&nbsp;and&nbsp;so&nbsp;forth.&nbsp;It&nbsp;makes&nbsp;use&nbsp;of&nbsp;the&nbsp;classes&nbsp;defined&nbsp;in&nbsp;module&nbsp;class_lib.<br>
+&nbsp;<br>
+--&nbsp;Luca&nbsp;Stalder,&nbsp;2017</tt></p>
+<p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#aa55cc">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Modules</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#aa55cc"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><table width="100%" summary="list"><tr><td width="25%" valign=top><a href="matplotlib.animation.html">matplotlib.animation</a><br>
+<a href="generation.html">generation</a><br>
+</td><td width="25%" valign=top><a href="math.html">math</a><br>
+<a href="numpy.html">numpy</a><br>
+</td><td width="25%" valign=top><a href="matplotlib.pyplot.html">matplotlib.pyplot</a><br>
+<a href="scipy.signal.html">scipy.signal</a><br>
+</td><td width="25%" valign=top><a href="sympy.html">sympy</a><br>
+</td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ee77aa">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Classes</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#ee77aa"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><dl>
+<dt><font face="helvetica, arial"><a href="builtins.html#object">builtins.object</a>
+</font></dt><dd>
+<dl>
+<dt><font face="helvetica, arial"><a href="analysis.html#BacklogSim">BacklogSim</a>
+</font></dt></dl>
+</dd>
+</dl>
+ <p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ffc8d8">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#000000" face="helvetica, arial"><a name="BacklogSim">class <strong>BacklogSim</strong></a>(<a href="builtins.html#object">builtins.object</a>)</font></td></tr>
+    
+<tr bgcolor="#ffc8d8"><td rowspan=2><tt>&nbsp;&nbsp;&nbsp;</tt></td>
+<td colspan=2><tt>Backlog&nbsp;simulation&nbsp;class.<br>
+&nbsp;<br>
+Offers&nbsp;a&nbsp;container&nbsp;used&nbsp;for&nbsp;iterative&nbsp;backlog&nbsp;analysis&nbsp;of&nbsp;stochastic&nbsp;task&nbsp;sets.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<br>
+Attributes:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;task_set:&nbsp;The&nbsp;TaskSet&nbsp;<a href="builtins.html#object">object</a>&nbsp;to&nbsp;be&nbsp;analyzed.&nbsp;This&nbsp;needs&nbsp;priorities&nbsp;and&nbsp;release&nbsp;times&nbsp;assigned.&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;p:&nbsp;The&nbsp;backlog's&nbsp;P-level,&nbsp;meaning&nbsp;only&nbsp;jobs&nbsp;of&nbsp;priority&nbsp;level&nbsp;P&nbsp;or&nbsp;higher&nbsp;are&nbsp;considered.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;k:&nbsp;Number&nbsp;of&nbsp;completed&nbsp;hyperperiods.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;t:&nbsp;Elapsed&nbsp;time&nbsp;in&nbsp;current&nbsp;hyperperiod.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;backlog:&nbsp;The&nbsp;current&nbsp;backlog&nbsp;distribution,&nbsp;stored&nbsp;as&nbsp;a&nbsp;list.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;timeline:&nbsp;A&nbsp;list&nbsp;of&nbsp;dicts,&nbsp;each&nbsp;modelling&nbsp;a&nbsp;job&nbsp;release&nbsp;with&nbsp;its&nbsp;release&nbsp;time&nbsp;and&nbsp;the&nbsp;corresponding&nbsp;task.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;jobs_remaining:&nbsp;A&nbsp;list&nbsp;of&nbsp;jobs&nbsp;that&nbsp;are&nbsp;not&nbsp;yet&nbsp;reached&nbsp;in&nbsp;the&nbsp;current&nbsp;hyperperiod.<br>&nbsp;</tt></td></tr>
+<tr><td>&nbsp;</td>
+<td width="100%">Methods defined here:<br>
+<dl><dt><a name="BacklogSim-__init__"><strong>__init__</strong></a>(self, task_set, p=0, initial_backlog=None)</dt><dd><tt>Initialize&nbsp;self.&nbsp;&nbsp;See&nbsp;help(type(self))&nbsp;for&nbsp;accurate&nbsp;signature.</tt></dd></dl>
+
+<dl><dt><a name="BacklogSim-step"><strong>step</strong></a>(self, dt=None, mode='before')</dt><dd><tt>Advance&nbsp;the&nbsp;model.<br>
+&nbsp;<br>
+Advances&nbsp;the&nbsp;model&nbsp;by&nbsp;dt&nbsp;time&nbsp;units.&nbsp;Perform&nbsp;convolution&nbsp;and&nbsp;shrinking&nbsp;where&nbsp;necessary.<br>
+&nbsp;<br>
+&nbsp;Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dt:&nbsp;Size&nbsp;of&nbsp;the&nbsp;step.&nbsp;If&nbsp;no&nbsp;dt&nbsp;is&nbsp;given,&nbsp;step&nbsp;to&nbsp;the&nbsp;next&nbsp;job&nbsp;release&nbsp;and/or&nbsp;end&nbsp;of&nbsp;the&nbsp;hyperperiod.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;mode:&nbsp;Determines&nbsp;behavior&nbsp;if&nbsp;step&nbsp;lands&nbsp;exactly&nbsp;on&nbsp;a&nbsp;job&nbsp;release.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'after'&nbsp;performs&nbsp;convolution&nbsp;on&nbsp;any&nbsp;job&nbsp;releases&nbsp;at&nbsp;the&nbsp;reached&nbsp;time,&nbsp;while&nbsp;'before'&nbsp;does&nbsp;not.</tt></dd></dl>
+
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__dict__</strong></dt>
+<dd><tt>dictionary&nbsp;for&nbsp;instance&nbsp;variables&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><tt>list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+</td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#eeaa77">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Functions</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#eeaa77"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><dl><dt><a name="-animate_backlog"><strong>animate_backlog</strong></a>(ts)</dt></dl>
+ <dl><dt><a name="-convolve_and_crop"><strong>convolve_and_crop</strong></a>(a, b, percentile=0.99999999999999)</dt><dd><tt>Convolution&nbsp;of&nbsp;two&nbsp;discrete&nbsp;probability&nbsp;distribution&nbsp;functions.</tt></dd></dl>
+ <dl><dt><a name="-dmp_analysis_FP"><strong>dmp_analysis_FP</strong></a>(task_set:class_lib.TaskSet)</dt><dd><tt>Deadline&nbsp;miss&nbsp;probability&nbsp;analysis&nbsp;for&nbsp;fixed&nbsp;priority&nbsp;scheduled&nbsp;task&nbsp;sets.</tt></dd></dl>
+ <dl><dt><a name="-plot_backlogs"><strong>plot_backlogs</strong></a>(task_set, p_level=0, n_subplots=9, add_stationary=False, scale='log')</dt><dd><tt>Plots&nbsp;the&nbsp;first&nbsp;n_subplots&nbsp;backlogs&nbsp;of&nbsp;task_set,&nbsp;considering&nbsp;only&nbsp;tasks&nbsp;of&nbsp;at&nbsp;least&nbsp;p_level&nbsp;priority.</tt></dd></dl>
+ <dl><dt><a name="-quadratic_difference"><strong>quadratic_difference</strong></a>(p:numpy.ndarray, q:numpy.ndarray)</dt><dd><tt>L2-Norm&nbsp;of&nbsp;difference&nbsp;between&nbsp;arrays&nbsp;p&nbsp;and&nbsp;q.</tt></dd></dl>
+ <dl><dt><a name="-scheduling_analysis_amc"><strong>scheduling_analysis_amc</strong></a>(task_set)</dt><dd><tt>AMC-rtb&nbsp;Response&nbsp;Time&nbsp;Analysis,&nbsp;as&nbsp;described&nbsp;in&nbsp;[2].</tt></dd></dl>
+ <dl><dt><a name="-scheduling_analysis_edf_vd"><strong>scheduling_analysis_edf_vd</strong></a>(task_set:class_lib.TaskSet)</dt><dd><tt>Calculated&nbsp;according&nbsp;to&nbsp;theorem&nbsp;1&nbsp;in&nbsp;[3].</tt></dd></dl>
+ <dl><dt><a name="-scheduling_analysis_smc"><strong>scheduling_analysis_smc</strong></a>(task_set:class_lib.TaskSet)</dt><dd><tt>SMC&nbsp;Response&nbsp;Time&nbsp;Analysis,&nbsp;as&nbsp;described&nbsp;in&nbsp;[2].</tt></dd></dl>
+ <dl><dt><a name="-shrink"><strong>shrink</strong></a>(pdf, t)</dt><dd><tt>Shrinking&nbsp;of&nbsp;PDF&nbsp;c&nbsp;by&nbsp;t&nbsp;time&nbsp;units.</tt></dd></dl>
+ <dl><dt><a name="-stationary_backlog_analytic"><strong>stationary_backlog_analytic</strong></a>(task_set:class_lib.TaskSet, p_level=0)</dt><dd><tt>Exact&nbsp;solution&nbsp;for&nbsp;finding&nbsp;a&nbsp;task&nbsp;set's&nbsp;stationary&nbsp;backlog.<br>
+&nbsp;<br>
+This&nbsp;method&nbsp;finds&nbsp;the&nbsp;stationary&nbsp;backlog&nbsp;at&nbsp;the&nbsp;beginning&nbsp;of&nbsp;a&nbsp;task&nbsp;set's&nbsp;hyperperiod&nbsp;by&nbsp;exact&nbsp;calculation,&nbsp;which<br>
+involves&nbsp;finding&nbsp;its&nbsp;Markov&nbsp;chain&nbsp;matrix.&nbsp;For&nbsp;further&nbsp;details&nbsp;refer&nbsp;to&nbsp;[4].<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;task_set:&nbsp;The&nbsp;task&nbsp;set&nbsp;in&nbsp;consideration.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;p_level:&nbsp;The&nbsp;desired&nbsp;priority&nbsp;level&nbsp;of&nbsp;the&nbsp;resulting&nbsp;backlog.&nbsp;Only&nbsp;tasks&nbsp;with&nbsp;priority&nbsp;of&nbsp;at&nbsp;least&nbsp;p_level&nbsp;are&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;taken&nbsp;into&nbsp;consideration.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;An&nbsp;array&nbsp;representing&nbsp;the&nbsp;probability&nbsp;distribution&nbsp;over&nbsp;the&nbsp;task&nbsp;set's&nbsp;stationary&nbsp;backlog&nbsp;at&nbsp;the&nbsp;beginning&nbsp;of&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;its&nbsp;hyperperiod.</tt></dd></dl>
+ <dl><dt><a name="-stationary_backlog_iter"><strong>stationary_backlog_iter</strong></a>(task_set:class_lib.TaskSet, p_level=0, max_iter=200, epsilon=1e-14)</dt><dd><tt>Iterative&nbsp;calculation&nbsp;of&nbsp;the&nbsp;stationary&nbsp;backlog&nbsp;for&nbsp;a&nbsp;task&nbsp;set.<br>
+&nbsp;<br>
+This&nbsp;method&nbsp;finds&nbsp;the&nbsp;stationary&nbsp;backlog&nbsp;at&nbsp;the&nbsp;beginning&nbsp;of&nbsp;a&nbsp;task&nbsp;set's&nbsp;hyperperiod&nbsp;by&nbsp;repeatedly&nbsp;applying&nbsp;<br>
+convolution&nbsp;and&nbsp;shrinking&nbsp;until&nbsp;this&nbsp;backlog&nbsp;converges.&nbsp;Convergence&nbsp;is&nbsp;detected&nbsp;by&nbsp;a&nbsp;quadratic&nbsp;error&nbsp;&lt;&nbsp;epsilon.<br>
+&nbsp;<br>
+This&nbsp;method&nbsp;is&nbsp;further&nbsp;described&nbsp;in&nbsp;[4].<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;task_set:&nbsp;The&nbsp;task&nbsp;set&nbsp;in&nbsp;consideration.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;p_level:&nbsp;The&nbsp;desired&nbsp;priority&nbsp;level&nbsp;of&nbsp;the&nbsp;resulting&nbsp;backlog.&nbsp;Only&nbsp;tasks&nbsp;with&nbsp;priority&nbsp;of&nbsp;at&nbsp;least&nbsp;p_level&nbsp;are&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;taken&nbsp;into&nbsp;consideration.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;max_iter:&nbsp;This&nbsp;bounds&nbsp;the&nbsp;maximum&nbsp;number&nbsp;of&nbsp;hyperperiods&nbsp;scanned.&nbsp;If&nbsp;no&nbsp;convergence&nbsp;is&nbsp;found&nbsp;after&nbsp;max_iter&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;iterations,&nbsp;the&nbsp;stationary&nbsp;backlog&nbsp;is&nbsp;assumed&nbsp;to&nbsp;grow&nbsp;unbounded.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;epsilon:&nbsp;Stopping&nbsp;value&nbsp;for&nbsp;convergence.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;An&nbsp;array&nbsp;representing&nbsp;the&nbsp;probability&nbsp;distribution&nbsp;over&nbsp;the&nbsp;task&nbsp;set's&nbsp;stationary&nbsp;backlog&nbsp;at&nbsp;the&nbsp;beginning&nbsp;of&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;its&nbsp;hyperperiod.</tt></dd></dl>
+ <dl><dt><a name="-total_variation_distance"><strong>total_variation_distance</strong></a>(p:numpy.ndarray, q:numpy.ndarray)</dt><dd><tt>Total&nbsp;variation&nbsp;distance&nbsp;between&nbsp;arrays&nbsp;p&nbsp;and&nbsp;q.</tt></dd></dl>
+</td></tr></table>
+</body></html>

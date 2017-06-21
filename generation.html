@@ -1,0 +1,129 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html><head><title>Python: module generation</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+</head><body bgcolor="#f0f0f8">
+
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="heading">
+<tr bgcolor="#7799ee">
+<td valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial">&nbsp;<br><big><big><strong>generation</strong></big></big></font></td
+><td align=right valign=bottom
+><font color="#ffffff" face="helvetica, arial"><a href=".">index</a><br><a href="file:c%3A%5Cusers%5Cluca%5Cpycharmprojects%5Cbsc-thesis%5Cgeneration.py">c:\users\luca\pycharmprojects\bsc-thesis\generation.py</a></font></td></tr></table>
+    <p><tt>This&nbsp;module&nbsp;offers&nbsp;various&nbsp;methods&nbsp;and&nbsp;functions&nbsp;for&nbsp;the&nbsp;generation&nbsp;of&nbsp;fair&nbsp;deterministic&nbsp;and&nbsp;stochastic&nbsp;task&nbsp;sets.<br>
+It&nbsp;makes&nbsp;use&nbsp;of&nbsp;the&nbsp;classes&nbsp;defined&nbsp;in&nbsp;module&nbsp;class_lib.<br>
+&nbsp;<br>
+--&nbsp;Luca&nbsp;Stalder,&nbsp;2017</tt></p>
+<p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#aa55cc">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Modules</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#aa55cc"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><table width="100%" summary="list"><tr><td width="25%" valign=top><a href="math.html">math</a><br>
+</td><td width="25%" valign=top><a href="numpy.html">numpy</a><br>
+</td><td width="25%" valign=top><a href="numpy.random.html">numpy.random</a><br>
+</td><td width="25%" valign=top></td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#eeaa77">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Functions</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#eeaa77"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><dl><dt><a name="-bounded_uniform"><strong>bounded_uniform</strong></a>(u_hi_lo, u_hi_hi, m, n_hi, u_min, u_hi)</dt><dd><tt>Generates&nbsp;a&nbsp;list&nbsp;u_lo&nbsp;of&nbsp;uniformly&nbsp;random&nbsp;values,&nbsp;each&nbsp;corresponding&nbsp;to&nbsp;a&nbsp;value&nbsp;in&nbsp;u_hi,&nbsp;with&nbsp;following&nbsp;conditions:<br>
+&nbsp;<br>
+(1)&nbsp;sum(u_lo)&nbsp;is&nbsp;equal&nbsp;to&nbsp;m&nbsp;*&nbsp;u_hi_lo.<br>
+(2)&nbsp;No&nbsp;value&nbsp;in&nbsp;u_lo&nbsp;is&nbsp;larger&nbsp;than&nbsp;its&nbsp;corresponding&nbsp;value&nbsp;in&nbsp;u_hi.<br>
+&nbsp;<br>
+This&nbsp;algorithm&nbsp;is&nbsp;taken&nbsp;from&nbsp;[2].<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_hi_lo:&nbsp;Desired&nbsp;total&nbsp;utilization&nbsp;of&nbsp;HI-criticality&nbsp;tasks&nbsp;in&nbsp;LO-mode.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_hi_hi:&nbsp;Given&nbsp;total&nbsp;utilization&nbsp;of&nbsp;HI-criticality&nbsp;tasks&nbsp;in&nbsp;HI-mode.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;m:&nbsp;Number&nbsp;of&nbsp;processors&nbsp;in&nbsp;the&nbsp;system.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;n_hi:&nbsp;Number&nbsp;of&nbsp;HI-criticality&nbsp;tasks.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_min:&nbsp;Minimum&nbsp;utilization&nbsp;per&nbsp;task.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_hi:&nbsp;List&nbsp;of&nbsp;HI-mode&nbsp;task&nbsp;utilizations.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;A&nbsp;list&nbsp;u_lo&nbsp;of&nbsp;task&nbsp;utilizations&nbsp;for&nbsp;every&nbsp;HI-criticality&nbsp;task.</tt></dd></dl>
+ <dl><dt><a name="-dummy_taskset"><strong>dummy_taskset</strong></a>()</dt><dd><tt>Returns&nbsp;a&nbsp;small&nbsp;dummy&nbsp;task&nbsp;set&nbsp;with&nbsp;only&nbsp;two&nbsp;tasks.&nbsp;These&nbsp;can&nbsp;be&nbsp;used&nbsp;for&nbsp;testing&nbsp;for&nbsp;example.</tt></dd></dl>
+ <dl><dt><a name="-mc_fairgen_det"><strong>mc_fairgen_det</strong></a>(set_id, u_lo=None, u_hi=None, m=1, u_min=0.01, u_max=0.99, max_tasks=10, periods=None, time_granularity=100, implicit_deadlines=False) -&gt; class_lib.TaskSet</dt><dd><tt>Returns&nbsp;a&nbsp;fair&nbsp;task&nbsp;set&nbsp;of&nbsp;deterministic&nbsp;tasks.<br>
+&nbsp;<br>
+Can&nbsp;either&nbsp;be&nbsp;used&nbsp;to&nbsp;generate&nbsp;task&nbsp;sets&nbsp;with&nbsp;specific&nbsp;system&nbsp;utilizations&nbsp;or&nbsp;with&nbsp;random&nbsp;values.<br>
+&nbsp;<br>
+Fair&nbsp;in&nbsp;this&nbsp;context&nbsp;means&nbsp;introducing&nbsp;as&nbsp;little&nbsp;bias&nbsp;towards&nbsp;specific&nbsp;scheduling&nbsp;policies,&nbsp;etc.&nbsp;as&nbsp;possible.<br>
+&nbsp;<br>
+This&nbsp;method&nbsp;is&nbsp;based&nbsp;on&nbsp;[2].<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;set_id:&nbsp;Identifier&nbsp;for&nbsp;newly&nbsp;generated&nbsp;task&nbsp;set.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_lo:&nbsp;Desired&nbsp;normalized&nbsp;(per-core)&nbsp;system&nbsp;utilization&nbsp;in&nbsp;LO-mode.&nbsp;Fairly&nbsp;picked&nbsp;at&nbsp;random&nbsp;if&nbsp;None.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_hi:&nbsp;Desired&nbsp;normalized&nbsp;(per-core)&nbsp;system&nbsp;utilization&nbsp;in&nbsp;HI-mode.&nbsp;Fairly&nbsp;picked&nbsp;at&nbsp;random&nbsp;if&nbsp;None.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;m:&nbsp;Number&nbsp;of&nbsp;cores&nbsp;in&nbsp;the&nbsp;system.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_min:&nbsp;Minimum&nbsp;per-task&nbsp;utilization.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_max:&nbsp;Maximum&nbsp;per-task&nbsp;utilization.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;max_tasks:&nbsp;Maximum&nbsp;number&nbsp;of&nbsp;tasks&nbsp;in&nbsp;the&nbsp;generated&nbsp;task&nbsp;set.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;periods:&nbsp;List&nbsp;of&nbsp;possible&nbsp;period&nbsp;values.&nbsp;A&nbsp;default&nbsp;list&nbsp;resulting&nbsp;in&nbsp;a&nbsp;small&nbsp;hyperperiod&nbsp;is&nbsp;assigned&nbsp;if&nbsp;None.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;time_granularity:&nbsp;Multiplier&nbsp;to&nbsp;introduce&nbsp;smaller&nbsp;discrete&nbsp;time&nbsp;units.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;implicit_deadlines:&nbsp;If&nbsp;true,&nbsp;deadlines&nbsp;are&nbsp;equal&nbsp;to&nbsp;the&nbsp;period,&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if&nbsp;false&nbsp;deadlines&nbsp;are&nbsp;picked&nbsp;uniformly&nbsp;at&nbsp;random.&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;A&nbsp;TaskSet&nbsp;object&nbsp;(defined&nbsp;in&nbsp;module&nbsp;class_lib)&nbsp;with&nbsp;the&nbsp;desired&nbsp;parameters.&nbsp;Note&nbsp;that&nbsp;this&nbsp;task&nbsp;set&nbsp;does&nbsp;not&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;have&nbsp;any&nbsp;priorities&nbsp;or&nbsp;job&nbsp;release&nbsp;times&nbsp;assigned&nbsp;yet.</tt></dd></dl>
+ <dl><dt><a name="-mc_fairgen_stoch"><strong>mc_fairgen_stoch</strong></a>(set_id, u_lo=None, u_hi=None, mode='max', m=1, u_min=0.01, u_max=0.99, max_tasks=10, periods=None, time_granularity=100, implicit_deadlines=False, distribution_cls=&lt;class 'class_lib.WeibullDist'&gt;, c_lo_percent=0.999, c_hi_percent=0.99999) -&gt; [&lt;class 'class_lib.TaskSet'&gt;]</dt><dd><tt>Returns&nbsp;a&nbsp;fair&nbsp;task&nbsp;set&nbsp;of&nbsp;tasks&nbsp;with&nbsp;stochastic&nbsp;execution&nbsp;times.<br>
+&nbsp;<br>
+Can&nbsp;either&nbsp;be&nbsp;used&nbsp;to&nbsp;generate&nbsp;task&nbsp;sets&nbsp;with&nbsp;specific&nbsp;system&nbsp;utilizations&nbsp;or&nbsp;with&nbsp;random&nbsp;values.<br>
+&nbsp;<br>
+Fair&nbsp;in&nbsp;this&nbsp;context&nbsp;means&nbsp;introducing&nbsp;as&nbsp;little&nbsp;bias&nbsp;towards&nbsp;specific&nbsp;scheduling&nbsp;policies,&nbsp;etc.&nbsp;as&nbsp;possible.<br>
+&nbsp;<br>
+This&nbsp;method&nbsp;is&nbsp;based&nbsp;on&nbsp;[2],&nbsp;using&nbsp;mc_fairgen_det&nbsp;for&nbsp;its&nbsp;starting&nbsp;values,&nbsp;but&nbsp;also&nbsp;introduces&nbsp;stochastic&nbsp;task&nbsp;<br>
+execution&nbsp;times.&nbsp;The&nbsp;distributions&nbsp;are&nbsp;generated&nbsp;based&nbsp;on&nbsp;c_lo&nbsp;values.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;set_id:&nbsp;Identifier&nbsp;for&nbsp;newly&nbsp;generated&nbsp;task&nbsp;set.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_lo:&nbsp;Desired&nbsp;normalized&nbsp;(per-core)&nbsp;system&nbsp;utilization&nbsp;in&nbsp;LO-mode.&nbsp;Fairly&nbsp;picked&nbsp;at&nbsp;random&nbsp;if&nbsp;None.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_hi:&nbsp;Desired&nbsp;normalized&nbsp;(per-core)&nbsp;system&nbsp;utilization&nbsp;in&nbsp;HI-mode.&nbsp;Fairly&nbsp;picked&nbsp;at&nbsp;random&nbsp;if&nbsp;None.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;mode:&nbsp;If&nbsp;set&nbsp;to&nbsp;'max',&nbsp;the&nbsp;deterministic&nbsp;c_lo&nbsp;value&nbsp;is&nbsp;used&nbsp;as&nbsp;a&nbsp;max&nbsp;value&nbsp;for&nbsp;a&nbsp;tasks&nbsp;distribution.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;If&nbsp;set&nbsp;to&nbsp;'avg',&nbsp;c_lo&nbsp;is&nbsp;used&nbsp;as&nbsp;an&nbsp;expected&nbsp;value&nbsp;for&nbsp;the&nbsp;tasks&nbsp;distribution.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;m:&nbsp;Number&nbsp;of&nbsp;cores&nbsp;in&nbsp;the&nbsp;system.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_min:&nbsp;Minimum&nbsp;per-task&nbsp;utilization.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u_max:&nbsp;Maximum&nbsp;per-task&nbsp;utilization.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;max_tasks:&nbsp;Maximum&nbsp;number&nbsp;of&nbsp;tasks&nbsp;in&nbsp;the&nbsp;generated&nbsp;task&nbsp;set.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;periods:&nbsp;List&nbsp;of&nbsp;possible&nbsp;period&nbsp;values.&nbsp;A&nbsp;default&nbsp;list&nbsp;resulting&nbsp;in&nbsp;a&nbsp;small&nbsp;hyperperiod&nbsp;is&nbsp;assigned&nbsp;if&nbsp;None.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;time_granularity:&nbsp;Multiplier&nbsp;to&nbsp;introduce&nbsp;smaller&nbsp;discrete&nbsp;time&nbsp;units.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;implicit_deadlines:&nbsp;If&nbsp;true,&nbsp;deadlines&nbsp;are&nbsp;equal&nbsp;to&nbsp;the&nbsp;period,&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if&nbsp;false&nbsp;deadlines&nbsp;are&nbsp;picked&nbsp;uniformly&nbsp;at&nbsp;random.&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;distribution_cls:&nbsp;The&nbsp;class&nbsp;of&nbsp;distribution&nbsp;used&nbsp;for&nbsp;generating&nbsp;task&nbsp;sets.&nbsp;As&nbsp;standard,&nbsp;WeibullDist&nbsp;introduced<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;in&nbsp;module&nbsp;class_lib&nbsp;is&nbsp;used,&nbsp;but&nbsp;in&nbsp;principle,&nbsp;any&nbsp;custom&nbsp;distribution&nbsp;class&nbsp;can&nbsp;be&nbsp;implemented,&nbsp;as&nbsp;long&nbsp;as<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;they&nbsp;contain&nbsp;EVERY&nbsp;method&nbsp;seen&nbsp;in&nbsp;class_lib.WeibullDist.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;c_lo_percent:&nbsp;LO-criticality&nbsp;tasks'&nbsp;distribution&nbsp;is&nbsp;chosen&nbsp;such&nbsp;that&nbsp;in&nbsp;discretizing&nbsp;them,&nbsp;their&nbsp;PDF&nbsp;gets&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cropped&nbsp;at&nbsp;the&nbsp;c_lo_percent-th&nbsp;percentile.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;c_hi_percent:&nbsp;HI-criticality&nbsp;tasks'&nbsp;distribution&nbsp;is&nbsp;chosen&nbsp;such&nbsp;that&nbsp;in&nbsp;discretizing&nbsp;them,&nbsp;their&nbsp;PDF&nbsp;gets&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cropped&nbsp;at&nbsp;the&nbsp;c_hi_percent-th&nbsp;percentile.&nbsp;&nbsp;&nbsp;&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;A&nbsp;TaskSet&nbsp;object&nbsp;(defined&nbsp;in&nbsp;module&nbsp;class_lib)&nbsp;with&nbsp;the&nbsp;desired&nbsp;parameters.&nbsp;c_lo&nbsp;and&nbsp;c_hi&nbsp;values&nbsp;may&nbsp;have&nbsp;been<br>
+&nbsp;&nbsp;&nbsp;&nbsp;adjusted&nbsp;from&nbsp;their&nbsp;original&nbsp;values&nbsp;generated&nbsp;by&nbsp;mc_fairgen_det.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Note&nbsp;that&nbsp;this&nbsp;task&nbsp;set&nbsp;does&nbsp;not&nbsp;have&nbsp;any&nbsp;priorities&nbsp;or&nbsp;job&nbsp;release&nbsp;times&nbsp;assigned&nbsp;yet.</tt></dd></dl>
+ <dl><dt><a name="-randfixedsum"><strong>randfixedsum</strong></a>(n, u, nsets, a, b)</dt><dd><tt>Randomly&nbsp;and&nbsp;uniformly&nbsp;generates&nbsp;vectors&nbsp;with&nbsp;a&nbsp;specified&nbsp;sum&nbsp;and&nbsp;values&nbsp;in&nbsp;a&nbsp;specified&nbsp;interval.<br>
+&nbsp;<br>
+All&nbsp;courtesy&nbsp;to&nbsp;P.&nbsp;Emberson,&nbsp;R.&nbsp;Stafford,&nbsp;R.&nbsp;Davis&nbsp;for&nbsp;the&nbsp;randfixedsum&nbsp;algorithm&nbsp;and&nbsp;their&nbsp;implementation&nbsp;in&nbsp;<br>
+Python.&nbsp;Only&nbsp;minor&nbsp;adjustments&nbsp;have&nbsp;been&nbsp;made&nbsp;and&nbsp;are&nbsp;annotated&nbsp;in&nbsp;the&nbsp;corresponding&nbsp;lines.<br>
+&nbsp;<br>
+Paper:&nbsp;[1]<br>
+Matlab:&nbsp;https://www.mathworks.com/matlabcentral/fileexchange/9700-random-vectors-with-fixed-sum<br>
+Python:&nbsp;https://github.com/brandenburg/schedcat/blob/master/schedcat/generator/generator_emstada.py<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;n:&nbsp;Size&nbsp;of&nbsp;each&nbsp;returned&nbsp;vector.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;u:&nbsp;Float&nbsp;value&nbsp;every&nbsp;vector&nbsp;sums&nbsp;up&nbsp;to.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;nsets:&nbsp;Number&nbsp;of&nbsp;vectors&nbsp;that&nbsp;are&nbsp;returned.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;a:&nbsp;Lower&nbsp;bound&nbsp;for&nbsp;every&nbsp;element&nbsp;in&nbsp;all&nbsp;vectors.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;b:&nbsp;Upper&nbsp;bound&nbsp;for&nbsp;every&nbsp;element&nbsp;in&nbsp;all&nbsp;vectors.<br>
+&nbsp;<br>
+Returns:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;An&nbsp;array&nbsp;of&nbsp;nsets&nbsp;vectors,&nbsp;each&nbsp;containing&nbsp;n&nbsp;float&nbsp;values&nbsp;that&nbsp;lie&nbsp;between&nbsp;a&nbsp;and&nbsp;b&nbsp;and&nbsp;sum&nbsp;up&nbsp;to&nbsp;u.</tt></dd></dl>
+</td></tr></table>
+</body></html>

@@ -1,29 +1,36 @@
-from taskset_class_lib import Task, TaskSet
-from math import ceil
+"""
+This module contains any methods and functions related to the analysis of a task set's schedulability, deadline miss
+probability and so forth. It makes use of the classes defined in module class_lib.
+
+-- Luca Stalder, 2017
+"""
+
+from class_lib import Task, TaskSet
+import math
 import numpy as np
 import sympy as sp
-import taskset_generation as gen
+import generation as gen
 import scipy.signal as sig
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from time import time
 
 
 class BacklogSim(object):
-    """Backlog simulation class
+    """Backlog simulation class.
     
-    Can be used for iterative backlog analysis of stochastic task sets.
-    
+    Offers a container used for iterative backlog analysis of stochastic task sets.
+        
     Attributes:
         task_set: The TaskSet object to be analyzed. This needs priorities and release times assigned. 
         p: The backlog's P-level, meaning only jobs of priority level P or higher are considered.
         k: Number of completed hyperperiods.
         t: Elapsed time in current hyperperiod.
-        backlog: The current backlog distribution, stored as a list.    
+        backlog: The current backlog distribution, stored as a list.
+        timeline: A list of dicts, each modelling a job release with its release time and the corresponding task.
+        jobs_remaining: A list of jobs that are not yet reached in the current hyperperiod.
     """
 
     def __init__(self, task_set, p=0, initial_backlog=None):
-        """Initializes new simulation object."""
         self.task_set = task_set
         self.p = p
         self.k = 0
@@ -37,7 +44,7 @@ class BacklogSim(object):
         self.timeline.sort(key=lambda x: x['t'])
         self.jobs_remaining = list(self.timeline)  # Store a copy
 
-    def step(self, dt=None, mode='after'):
+    def step(self, dt=None, mode='before'):
         """Advance the model.
         
         Advances the model by dt time units. Perform convolution and shrinking where necessary.
@@ -47,7 +54,6 @@ class BacklogSim(object):
              mode: Determines behavior if step lands exactly on a job release.
                 'after' performs convolution on any job releases at the reached time, while 'before' does not.
         """
-        start = time()
         if dt is None:
             if not self.jobs_remaining:
                 dt = self.task_set.hyperperiod - self.t  # Step to end of hyperperiod if no remaining jobs
@@ -67,9 +73,6 @@ class BacklogSim(object):
                     self.t = 0
                     self.jobs_remaining = list(self.timeline)
                     dt -= time_remaining
-                    stop = time()
-                    # print("step:", stop - start)
-                    start = time()
                     continue
             elif dt < self.jobs_remaining[0]['t'] - self.t or dt == self.jobs_remaining[0]['t'] and mode == 'before':
                 # Step does not reach or convolve next job release
@@ -84,25 +87,8 @@ class BacklogSim(object):
                 self.t = next_job['t']
 
 
-def dummy_taskset():
-    t1 = Task(task_id=0, criticality='HI', period=4, deadline=4, u_lo=0.25, c_lo=1, u_hi=0.5, c_hi=2, phase=0)
-    t2 = Task(task_id=1, criticality='LO', period=6, deadline=6, u_lo=0.667, c_lo=4, u_hi=None, c_hi=None, phase=0)
-    t1.c_pdf = np.array([0.0, 0.5, 0.5])
-    t2.c_pdf = np.array([0.0, 0.0, 0.2, 0.3, 0.5])
-    ts = TaskSet(0, [t1, t2])
-    ts.assign_priorities_rm()
-    ts.assign_rel_times()
-    return ts
-
-
-def initialize_task_set(path):
-    """Reads task set from path."""
-    # Sample task set:
-    return gen.mc_fairgen_det(n_sets=1)
-
-
 def scheduling_analysis_smc(task_set: TaskSet):
-    """SMC Response Time Analysis, as mentioned in [2]."""
+    """SMC Response Time Analysis, as described in [2]."""
 
     def min_crit(c1, c2):
         """Returns the lower of both criticality levels."""
@@ -127,7 +113,7 @@ def scheduling_analysis_smc(task_set: TaskSet):
                 return False
             sum_hp = task.c[task.criticality]
             for j in hp:
-                sum_hp += ceil(task.r / j.period) * j.c[min_crit(task.criticality, j.criticality)]
+                sum_hp += math.ceil(task.r / j.period) * j.c[min_crit(task.criticality, j.criticality)]
             r_next = sum_hp
 
     # No deadline overruns happened:
@@ -135,7 +121,7 @@ def scheduling_analysis_smc(task_set: TaskSet):
 
 
 def scheduling_analysis_amc(task_set):
-    """AMC-rtb Response Time Analysis, as mentioned in [2]."""
+    """AMC-rtb Response Time Analysis, as described in [2]."""
     for task in task_set.tasks:
         # 1.1) Build set of all tasks with higher priority:
         hp = []
@@ -156,7 +142,7 @@ def scheduling_analysis_amc(task_set):
                 return False
             sum_hp = task.c[task.criticality]
             for j in hp:
-                sum_hp += ceil(task.r_lo / j.period) * j.c['LO']
+                sum_hp += math.ceil(task.r_lo / j.period) * j.c['LO']
             r_next = sum_hp
 
         # 2.2 R_HI (only defined for HI-critical tasks):
@@ -169,7 +155,7 @@ def scheduling_analysis_amc(task_set):
                     return False
                 sum_hp = task.c['HI']
                 for j in hp_hi:
-                    sum_hp += ceil(task.r_hi / j.period) * j.c['HI']
+                    sum_hp += math.ceil(task.r_hi / j.period) * j.c['HI']
                 r_next = sum_hp
 
         # 2.3 R_* (criticality change, only defined for HI-critical tasks):
@@ -182,9 +168,9 @@ def scheduling_analysis_amc(task_set):
                     return False
                 sum_hp = task.c['HI']
                 for j in hp_hi:
-                    sum_hp += ceil(task.r_asterisk / j.period) * j.c['HI']
+                    sum_hp += math.ceil(task.r_asterisk / j.period) * j.c['HI']
                 for k in hp_lo:
-                    sum_hp += ceil(task.r_lo / k.period) * k.c['LO']
+                    sum_hp += math.ceil(task.r_lo / k.period) * k.c['LO']
                 r_next = sum_hp
 
     # No deadline overruns happened:
@@ -210,105 +196,36 @@ def scheduling_analysis_edf_vd(task_set: TaskSet):
     return u_1_1 + min(u_2_2, u_2_1 / (1 - u_2_2)) <= 1     # Note that this condition is sufficient for schedulability.
 
 
-def scheduling_analysis(task_set_path, scheme):
-    """Wrapper function"""
-
-    task_set = initialize_task_set(task_set_path)
-    return scheme(task_set)
-
-
-def convolve_and_crop(a, b, percentile=1-1e-14):
-    """"""
-    # Convolve
-    conv = sig.convolve(a, b)
-
-    # Crop
-    i = 0
-    psum = 0.0
-    while psum < percentile and i < len(conv):
-        psum += conv[i]
-        i += 1
-    conv = conv[:i]
-
-    # Rescale
-    return conv / sum(conv)
-
-
-def shrink(pdf, t):
-    """Shrinking of PDF c by t time units."""
-
-    if t >= len(pdf):
-        return np.array([sum(pdf)])
-    else:
-        result = pdf[t:]
-        result[0] += sum(pdf[:t])
-        return result
-
-
-def total_variation_distance(p: np.ndarray, q: np.ndarray):
-    """Total variation distance between arrays p and q."""
-    if len(p) <= len(q):
-        a = np.array(p)
-        b = np.array(q)
-    else:
-        a = np.array(q)
-        b = np.array(p)
-    a.resize(len(b))
-    return max([abs(x - y) for x, y in zip(a, b)])
-
-
-def p_level_backlog(task_set: TaskSet, p: int=0, n: int=0, t: int=0) -> [float]:
+def stationary_backlog_iter(task_set: TaskSet, p_level=0, max_iter=200, epsilon=1e-14):
+    """Iterative calculation of the stationary backlog for a task set.
+    
+    This method finds the stationary backlog at the beginning of a task set's hyperperiod by repeatedly applying 
+    convolution and shrinking until this backlog converges. Convergence is detected by a quadratic error < epsilon.
+    
+    This method is further described in [4].
+    
+    Args:
+        task_set: The task set in consideration.
+        p_level: The desired priority level of the resulting backlog. Only tasks with priority of at least p_level are 
+            taken into consideration.
+        max_iter: This bounds the maximum number of hyperperiods scanned. If no convergence is found after max_iter 
+            iterations, the stationary backlog is assumed to grow unbounded.
+        epsilon: Stopping value for convergence.
+    
+    Returns:
+        An array representing the probability distribution over the task set's stationary backlog at the beginning of 
+        its hyperperiod.
     """
-    Iterative calculation.
-    :param task_set: Needs assigned job release times.
-    :param p: Priority level.
-    :param n: The n-th hyperperiod is considered.
-    :param t: Time inside the considered hyperperiod.
-    :return: Returns PDF of the P-level backlog at time t during hyperperiod k.
-    """
-    # Build timeline of one full hyperperiod
-    timeline = []
-    for task in task_set.tasks:
-        timeline.extend([{'t': t, 'task': task} for t in task.rel_times if task.priority >= p])
-    timeline.sort(key=lambda x: x['t'])
-
-    backlog = [1.0]
-
-    for k in range(n):
-        # Start scanning through this hyperperiod.
-        start = time()
-        now = 0
-        remaining = list(timeline)
-
-        while len(remaining) > 0:
-            next_rel = remaining.pop(0)
-            if next_rel['t'] > now:
-
-                if False: # and next_rel['t'] > t:
-                    shrink(backlog, t - now)
-                    return backlog
-                else:
-                    backlog = shrink(backlog, next_rel['t'] - now)
-                    now = next_rel['t']
-            backlog = convolve_and_crop(backlog, next_rel['task'].c_pdf)
-        else:
-            backlog = shrink(backlog, task_set.hyperperiod - now)
-        stop = time()
-        print(k, stop - start)
-    return backlog
-
-
-def steady_state_iter(task_set: TaskSet, max_iter=200, epsilon=1e-14):
-    sim = BacklogSim(task_set=task_set, p=0)
-    last = list(sim.backlog)
+    sim = BacklogSim(task_set=task_set, p=p_level)
+    last = sim.backlog
     dist = 1.
     i = 0
     while dist > epsilon and i <= max_iter or i < 10:
         sim.step(dt=task_set.hyperperiod, mode='before')
-        dist = total_variation_distance(last, sim.backlog)
+        dist = quadratic_difference(last, sim.backlog)
         print(i, dist)
         # print(sim.backlog)
-        last = list(sim.backlog)
+        last = sim.backlog
         i += 1
     if i > max_iter:
         print("Diverging backlog.")
@@ -318,8 +235,21 @@ def steady_state_iter(task_set: TaskSet, max_iter=200, epsilon=1e-14):
         return last
 
 
-def stationary_backlog(task_set: TaskSet, p_level=0):  # TODO Docstring
-    """"""
+def stationary_backlog_analytic(task_set: TaskSet, p_level=0):  # TODO Incomplete
+    """Exact solution for finding a task set's stationary backlog.
+    
+    This method finds the stationary backlog at the beginning of a task set's hyperperiod by exact calculation, which
+    involves finding its Markov chain matrix. For further details refer to [4].
+    
+    Args:
+        task_set: The task set in consideration.
+        p_level: The desired priority level of the resulting backlog. Only tasks with priority of at least p_level are 
+            taken into consideration.
+            
+    Returns:
+        An array representing the probability distribution over the task set's stationary backlog at the beginning of 
+        its hyperperiod.    
+    """
     w_min = 0  # Backlog after first hyperperiod assuming all jobs require minimal execution time.
     timeline = []
     for task in task_set.tasks:  # Build p-level timeline of one full hyperperiod
@@ -368,52 +298,44 @@ def stationary_backlog(task_set: TaskSet, p_level=0):  # TODO Docstring
     print(V, V.shape)
 
 
-    # a_matrix = np.eye(m_r - 1)
-    # a_matrix = a_matrix.col_insert(0, sp.zeros(m_r - 1, 1))
-    # a_matrix = a_matrix.row_insert(m_r, (p_upper_left[-1:0:-1, r] / -p_upper_left[0, r]).T)
-    # P, D = a_matrix.diagonalize()
-    # print(P)
-    # print(D)
+def dmp_analysis_FP(task_set: TaskSet):  # TODO Incomplete
+    """Deadline miss probability analysis for fixed priority scheduled task sets."""
+    backlogs = [None] * len(task_set.tasks)
+    for task in task_set.tasks:
+        if backlogs[task.priority] is None:
+            backlogs[task.priority] = stationary_backlog_iter(task_set)
+
+            # Job Response Time Analysis
 
 
-
-""""
-ts = gen.generate_tasksets_stoch(n_sets=1)[0]
-while ts.u_lo < 0.9:
-    ts = gen.generate_tasksets_stoch(n_sets=1)[0]
-ts.assign_priorities_rm()
-ts.assign_rel_times()
-ts.draw()
-"""
-
-# ts = gen.mc_fairgen_stoch(set_id=0, u_lo=1.0, mode='avg')
-# ts = dummy_taskset()
-# ts.assign_priorities_rm()
-# ts.assign_rel_times()
-# ts.draw()
-# start = time()
-# log = p_level_backlog(task_set=ts, n=10)
-# stop = time()
-# print("p_level_backlog:", stop - start)
-# plt.plot(range(len(log)), log, 'o')
-# start = time()
-# sim = BacklogSim(task_set=ts)
-# sim.step(ts.hyperperiod, mode='before')
-# stop = time()
-# print("BacklogSim:", stop - start)
-# plt.plot(range(len(sim.backlog)), sim.backlog, 'o')
-# start = time()
-# sim = BacklogSim(task_set=ts)
-# sim.step(ts.hyperperiod, mode='after')
-# stop = time()
-# print("BacklogSim:", stop - start)
-# plt.plot(range(len(sim.backlog)), sim.backlog, 'o')
-# plt.yscale('log')
-# plt.show()
+def plot_backlogs(task_set, p_level=0, n_subplots = 9, add_stationary=False, scale='log'):
+    """Plots the first n_subplots backlogs of task_set, considering only tasks of at least p_level priority."""
+    fig = plt.figure()
+    sim = BacklogSim(task_set, p_level)
+    if add_stationary:
+        stationary = stationary_backlog_iter(ts)
+        xlim = len(stationary)
+    else:
+        sim.step(task_set.hyperperiod * n_subplots)
+        xlim = len(sim.backlog)
+    sim.__init__(task_set, p_level)
+    for i in range(n_subplots):
+        sim.step(task_set.hyperperiod)
+        plt.subplot(n_subplots + 2 // 3, 3, i + 1)
+        plt.bar(range(len(sim.backlog)), sim.backlog)
+        plt.xlim(0, xlim)
+        plt.yscale(scale)
+        plt.title("Hyperperiods: %d" % sim.k)
+    if add_stationary:
+        plt.subplot(n_subplots + 2 // 3, 3, n_subplots + 1)
+        plt.bar(range(len(stationary)), stationary)
+        plt.xlim(0, xlim)
+        plt.yscale(scale)
+        plt.title("Stationary backlog")
+    plt.subplots_adjust(hspace=0.8)
+    plt.show()
 
 
-# print(scheduling_analysis("", 'smc'))
-# print(scheduling_analysis("", 'amc'))
 def animate_backlog(ts):  # TODO Fix animation (copy into separate script)
     sim = BacklogSim(task_set=ts)
     dt = ts.hyperperiod // 300  # 30 fps
@@ -448,15 +370,68 @@ def animate_backlog(ts):  # TODO Fix animation (copy into separate script)
     ani = animation.FuncAnimation(fig, animate, frames=20 * ts.hyperperiod, interval=500, blit=False, init_func=init)
     plt.show()
 
+
+def convolve_and_crop(a, b, percentile=1-1e-14):
+    """Convolution of two discrete probability distribution functions."""
+    # Convolve
+    conv = sig.convolve(a, b)
+
+    # Crop
+    i = 0
+    psum = 0.0
+    while psum < percentile and i < len(conv):
+        psum += conv[i]
+        i += 1
+    conv = conv[:i]
+
+    # Rescale
+    return conv / sum(conv)
+
+
+def shrink(pdf, t):
+    """Shrinking of PDF c by t time units."""
+
+    if t >= len(pdf):
+        return np.array([sum(pdf)])
+    else:
+        result = pdf[t:]
+        result[0] += sum(pdf[:t])
+        return result
+
+
+def quadratic_difference(p: np.ndarray, q: np.ndarray):
+    """L2-Norm of difference between arrays p and q."""
+    if len(p) <= len(q):
+        if len(p) <= len(q):
+            a = np.array(p)
+            b = np.array(q)
+        else:
+            a = np.array(q)
+            b = np.array(p)
+        a.resize(len(b))
+        return np.linalg.norm(a - b, 2)
+
+
+def total_variation_distance(p: np.ndarray, q: np.ndarray):
+    """Total variation distance between arrays p and q."""
+    if len(p) <= len(q):
+        a = np.array(p)
+        b = np.array(q)
+    else:
+        a = np.array(q)
+        b = np.array(p)
+    a.resize(len(b))
+    return max([abs(x - y) for x, y in zip(a, b)])
+
 if __name__ == '__main__':
     # ts = gen.mc_fairgen_stoch(set_id=0, u_lo=0.9, mode='avg', max_tasks=10)
-    ts = dummy_taskset()
-    ts.assign_priorities_rm()
-    ts.assign_rel_times()
-    # ts.draw()
-    print(steady_state_iter(task_set=ts))
+    ts = gen.dummy_taskset()
+    ts.set_priorities_rm()
+    ts.set_rel_times_fp()
+    ts.draw()
+    print(stationary_backlog_iter(task_set=ts))
     # stationary_backlog(ts, p_level=0)
-
+    # plot_backlogs(ts, add_stationary=True, scale='log')
 
 
 """
@@ -469,4 +444,7 @@ Literature:
     
 [3] Baruah, Bonifaci, D'Angelo, Marchetti-Spaccamela, van der Ster, Stougie
     Mixed-Criticality Scheduling of Sporadic Task Systems
+    
+[4] Diaz, Garcia, Kim, Lee, Bello, Lopez, Min, Mirabella
+    Stochastic Analysis of Periodic Real-Time Systems
 """
