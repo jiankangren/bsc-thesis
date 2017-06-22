@@ -7,6 +7,7 @@ operations related to them.
 
 import math
 import functools
+import collections
 import numpy as np
 import numpy.random as nprd
 import matplotlib.pyplot as plt
@@ -32,6 +33,9 @@ class Task(object):  # TODO Docstring for DMP
         priority: Integer value for task's priority in a TaskSet with fixed priority scheduling (0 means 'Lowest prio').
         c_pdf: Array of floats. task.c_pdf[i] returns P["Task takes i time units for execution."]
         rel_times: List of release times scheduled in the corresponding TaskSet's hyperperiod.
+        avg_response: An array modelling the distribution of average task response time. Only including values up to
+            its deadline, as the others are not considered for deadline miss probability analysis.
+        dmp: Average deadline miss probability.
     """
     def __init__(self,
                  task_id,
@@ -54,7 +58,8 @@ class Task(object):  # TODO Docstring for DMP
         self.priority = priority
         self.c_pdf = []
         self.rel_times = []
-        self.dmp = []
+        self.avg_response = None
+        self.dmp = None
 
     def plot_c_pdf(self, scale='linear'):
         """Simple method to display a plot of the task's execution time probability distribution.
@@ -82,11 +87,6 @@ class Task(object):  # TODO Docstring for DMP
             return [t for t in range(self.c_max()) if self.c_pdf[t] > epsilon][0]
 
 
-# class Job(object):
-#     """"""
-#     def __init__(self, ):
-
-
 class TaskSet(object):
     """Set of periodic tasks.
     
@@ -96,11 +96,10 @@ class TaskSet(object):
         set_id: Integer value that uniquely identifies the instance of TaskSet.
         tasks: List of tasks contained in this task set.
         n_lo: Number of LO-criticality tasks.
-        n_hi: Number of HI-critcality tasks.
+        n_hi: Number of HI-criticality tasks.
         u_lo: Total (system) utilization in LO-mode. Either based on c_lo, or on average execution times.
         u_hi: Total (system) utilization in HI-mode. Based on c_hi values.
         description: A short descriptive string about this task set. Can be used for plotting.
-        hyperperiod: This TaskSet's hyperperiod, defined as the least common multiple over all its tasks' periods.
     """
     def __init__(self, set_id, tasks: [Task]):
         self.id = set_id
@@ -111,7 +110,21 @@ class TaskSet(object):
         self.u_hi = sum([float(t.c_hi) / t.period for t in self.tasks if t.criticality == 'HI'])
         self.description = "Task Set {0}: {1} LO task(s) @ {3} util, {2} HI task(s) @ {4} util."\
             .format(self.id, self.n_lo, self.n_hi, self.u_lo, self.u_hi)
-        self.hyperperiod = lcm([t.period for t in self.tasks])  # TODO: Add lazy evaluation
+
+    @property
+    def hyperperiod(self):
+        """This TaskSet's hyperperiod, defined as the least common multiple over all its tasks' periods."""
+        return lcm([t.period for t in self.tasks])  # TODO: Add lazy evaluation
+
+    @property
+    def job_releases(self):
+        """A list of tuples, each representing the release of a new job instance, ordered by release time."""
+        timeline = []
+        JobRelease = collections.namedtuple('JobRelease', ['t', 'task'])
+        for task in self.tasks:
+            timeline.extend([JobRelease(t, task) for t in task.rel_times])
+        timeline.sort(key=lambda x: x.t)
+        return timeline
 
     def draw(self, scale='linear'):
         """Method for displaying a graphic representation of the task set.
@@ -162,6 +175,7 @@ class TaskSet(object):
             t.rel_times = [k * t.period + t.phase for k in range(self.hyperperiod // t.period)]
 
     # def build_job_list_FP(self):
+
 
 
 class WeibullDist(object):
