@@ -13,7 +13,7 @@ import numpy.random as nprd
 import matplotlib.pyplot as plt
 
 
-class Task(object):  # TODO Docstring for DMP
+class Task(object):
     """General-purpose task.
     
     Task can be used for periodic, both uni- and mixed-criticality tasks with either deterministic or stochastic 
@@ -164,18 +164,13 @@ class TaskSet(object):
         for i in range(len(tasks)):
             tasks[i].priority = i
 
-    def set_rel_times_fp(self):
+    def set_rel_times(self):
         """Builds the list of release times for every task.
         
         Release times are always relative to one hyperperiod.
-        
-        Applicable to fixed-priority-scheduled task sets.
         """
         for t in self.tasks:
             t.rel_times = [k * t.period + t.phase for k in range(self.hyperperiod // t.period)]
-
-    # def build_job_list_FP(self):
-
 
 
 class WeibullDist(object):

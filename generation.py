@@ -308,14 +308,14 @@ def mc_fairgen_stoch(
 
 
 def dummy_taskset():
-    """Returns a small dummy task set with only two tasks. These can be used for testing for example."""
-    t1 = Task(task_id=0, criticality='HI', period=4, deadline=4, u_lo=0.25, c_lo=1, u_hi=0.5, c_hi=2, phase=0)
-    t2 = Task(task_id=1, criticality='LO', period=6, deadline=6, u_lo=0.667, c_lo=4, u_hi=None, c_hi=None, phase=0)
+    """Returns a small dummy task set with only two tasks. These can be used for testing."""
+    t1 = Task(task_id=0, criticality='HI', period=4, deadline=3, u_lo=0.25, c_lo=1, u_hi=0.5, c_hi=2, phase=0)
+    t2 = Task(task_id=1, criticality='LO', period=6, deadline=5, u_lo=0.667, c_lo=4, u_hi=None, c_hi=None, phase=0)
     t1.c_pdf = np.array([0.0, 0.5, 0.5])
     t2.c_pdf = np.array([0.0, 0.0, 0.2, 0.3, 0.5])
     ts = TaskSet(0, [t1, t2])
     ts.set_priorities_rm()
-    ts.set_rel_times_fp()
+    ts.set_rel_times()
     return ts
 
 

@@ -7,8 +7,9 @@ probability and so forth. It makes use of the classes defined in module class_li
 
 import collections
 import math
-import matplotlib.animation as animation
+import copy
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import numpy as np
 import scipy.signal as sig
 import sympy as sp
@@ -36,7 +37,7 @@ class BacklogSim(object):
         self.p = p_level
         self.k = 0
         self.t = 0
-        self.backlog = np.array([1.0]) if initial_backlog is None else initial_backlog  # TODO Build custom container
+        self.backlog = np.array([1.0]) if initial_backlog is None else initial_backlog
 
         # Build timeline of one full hyperperiod
         self.timeline = [rel for rel in task_set.job_releases if rel.task.priority >= self.p]
@@ -344,6 +345,40 @@ def dmp_analysis_fp(task_set: TaskSet):
         task.dmp = 1. - np.sum(task.avg_response)
 
 
+def dmp_analysis_fp_given_lo_mode(task_set: TaskSet):
+    """
+    HI-mode deadline miss probability analysis for fixed priority tasksets with conditional probability "given LO-mode".
+    
+    For every LO-criticality task, distributions are left as-is.
+    
+    For every HI-criticality task, P["Task overruns c_lo"] is calculated, as well as the conditional probability 
+    distribution for the assumption of "no mode switch happens" is assigned. This is simply done by taking only c_pdf up
+    to c_lo and normalizing it.
+    
+    Args:
+        task_set: The task set under consideration. Note that this has to have set (fixed) task priorities.
+        
+    Returns:
+        task_set: A copy of the input task set with adjusted task execution time distributions.
+        p_switch: The probability of a mode switch happening within one hyperperiod.
+    """
+    # Probability of mode switch:
+    p_no_overrun = []
+    for task in task_set.tasks:
+        if task.criticality == 'HI':
+            p_no_overrun.append(np.sum(task.c_pdf[:task.c_lo + 1]) ** (task_set.hyperperiod // task.period))
+    p_switch = 1. - np.prod(p_no_overrun)
+
+    # Adjusted deadline miss probability:
+    task_set = TaskSet(task_set.id, copy.deepcopy(task_set.tasks))
+    for task in task_set.tasks:
+        if task.criticality == 'HI':
+            task.c_pdf = task.c_pdf[:task.c_lo + 1] / np.sum(task.c_pdf[:task.c_lo + 1])
+    dmp_analysis_fp(task_set)
+
+    return task_set, p_switch
+
+
 def plot_backlogs(task_set, p_level=0, n_subplots = 9, add_stationary=False, scale='log'):
     """Plots the first n_subplots backlogs of task_set, considering only tasks of at least p_level priority."""
     fig = plt.figure()
@@ -369,41 +404,6 @@ def plot_backlogs(task_set, p_level=0, n_subplots = 9, add_stationary=False, sca
         plt.yscale(scale)
         plt.title("Stationary backlog")
     plt.subplots_adjust(hspace=0.8)
-    plt.show()
-
-
-def animate_backlog(ts):  # TODO Fix animation (copy into separate script)
-    sim = BacklogSim(task_set=ts)
-    dt = ts.hyperperiod // 300  # 30 fps
-    dt = 1
-    xrange = len(sim.backlog)
-    fig = plt.figure()
-    ax = fig.add_subplot(111, autoscale_on=False, xlim=(0, xrange), ylim=(10 ** -6, 1.))
-    plt.yscale('log')
-    line, = ax.plot([0], [1.0])
-    k_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
-    time_text = ax.text(0.02, 0.9, '', transform=ax.transAxes)
-
-    def init():
-        line.set_data([], [])
-        k_text.set_text('')
-        time_text.set_text('')
-        return line, k_text, time_text
-
-    def animate(i):
-        global sim, dt, xrange, ax
-        sim.step(dt, mode='before')
-        xrange = max(xrange, len(sim.backlog))
-        print(xrange)
-        ax.set_xlim(0, xrange)
-        x_val = range(len(sim.backlog))
-        y_val = sim.backlog
-        line.set_data(x_val, y_val)
-        k_text.set_text('hyperperiod = %d' % sim.k)
-        time_text.set_text('time = %d' % sim.t)
-        return line, k_text, time_text
-
-    ani = animation.FuncAnimation(fig, animate, frames=20 * ts.hyperperiod, interval=500, blit=False, init_func=init)
     plt.show()
 
 
@@ -459,15 +459,25 @@ def total_variation_distance(p: np.ndarray, q: np.ndarray):
     return max([abs(x - y) for x, y in zip(a, b)])
 
 if __name__ == '__main__':
-    # ts = gen.mc_fairgen_stoch(set_id=0, u_lo=0.95, mode='avg', max_tasks=10)
+    # ts = gen.mc_fairgen_stoch(set_id=0, u_lo=0.9, mode='avg', max_tasks=10)
+    # ts.set_priorities_rm()
+    # ts.set_rel_times()
+    # ts.draw()
+    # # print(stationary_backlog_iter(task_set=ts))
+    # # stationary_backlog_analytic(ts, p_level=0)
+    # plot_backlogs(ts, add_stationary=True, scale='log')
     ts = gen.dummy_taskset()
     ts.set_priorities_rm()
-    ts.set_rel_times_fp()
-    # ts.draw()
-    # print(stationary_backlog_iter(task_set=ts))
-    # stationary_backlog_analytic(ts, p_level=0)
-    # plot_backlogs(ts, add_stationary=True, scale='log')
+    ts.set_rel_times()
     dmp_analysis_fp(ts)
+    for task in ts.tasks:
+        print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
+
+    ts_mod, p_switch = dmp_analysis_fp_given_lo_mode(ts)
+    print("Probability of mode switch:", p_switch)
+    for task in ts_mod.tasks:
+        print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
+
 
 
 """
