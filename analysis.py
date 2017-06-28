@@ -34,13 +34,13 @@ class BacklogSim(object):
 
     def __init__(self, task_set, p_level=0, initial_backlog=None):
         self.task_set = task_set
-        self.p = p_level
+        self.p_level = p_level
         self.k = 0
         self.t = 0
         self.backlog = np.array([1.0]) if initial_backlog is None else initial_backlog
 
         # Build timeline of one full hyperperiod
-        self.timeline = [rel for rel in task_set.job_releases if rel.task.priority >= self.p]
+        self.timeline = [rel for rel in task_set.jobs if rel.task.static_prio >= self.p_level]
         self.jobs_remaining = list(self.timeline)  # Store a copy
 
     def step(self, dt=None, mode='before'):
@@ -73,21 +73,23 @@ class BacklogSim(object):
                     self.jobs_remaining = list(self.timeline)
                     dt -= time_remaining
                     continue
-            elif dt < self.jobs_remaining[0].t - self.t or dt == self.jobs_remaining[0].t - self.t and mode == 'before':
+            elif dt < self.jobs_remaining[0].release - self.t \
+                    or dt == self.jobs_remaining[0].release - self.t and mode == 'before':
                 # Step does not reach or convolve next job release
                 self.backlog = shrink(self.backlog, dt)
                 self.t += dt
                 return
             else:  # Step to next job release
                 next_job = self.jobs_remaining.pop(0)
-                self.backlog = shrink(self.backlog, next_job.t - self.t)
-                self.backlog = convolve_pdf(self.backlog, next_job.task.c_pdf)
-                dt -= next_job.t - self.t
-                self.t = next_job.t
+                self.backlog = shrink(self.backlog, next_job.release - self.t)
+                self.backlog = convolve_rescale(self.backlog, next_job.task.c_pdf)
+                dt -= next_job.release - self.t
+                self.t = next_job.release
 
 
-def scheduling_analysis_smc(task_set: TaskSet):
-    """SMC Response Time Analysis, as described in [2]."""
+def d_smc(task_set: TaskSet):
+    """Deterministic SMC Response Time Analysis, as described in [2]."""
+    epsilon = 1e-14
 
     def min_crit(c1, c2):
         """Returns the lower of both criticality levels."""
@@ -98,92 +100,92 @@ def scheduling_analysis_smc(task_set: TaskSet):
 
     for task in task_set.tasks:
         # 1) Build set of tasks with higher priority:
-        hp = []
-        for j in task_set.tasks:
-            if j.priority > task.priority:
-                hp.append(j)
+        hp = [j for j in task_set.tasks if j.static_prio > task.static_prio]
 
         # 2) Iteration to fixed point for solving recurrence relation:
-        task.r = 0
-        r_next = -1
-        while task.r != r_next:
-            task.r = r_next
-            if task.r > task.deadline:  # task.r growing monotonically
+        res = 0
+        res_next = -1
+        while res != res_next:
+            res = res_next
+            if res > task.deadline:  # res growing monotonically
                 return False
-            sum_hp = task.c[task.criticality]
+            sum_hp = task.c_lo if task.criticality == 'LO' else task.c_hi
             for j in hp:
-                sum_hp += math.ceil(task.r / j.period) * j.c[min_crit(task.criticality, j.criticality)]
-            r_next = sum_hp
+                if min_crit(task.criticality, j.criticality) == 'HI':
+                    sum_hp += math.ceil(res / j.period) * j.c_hi
+                else:
+                    sum_hp += math.ceil(res / j.period) * j.c_lo
+            res_next = sum_hp
 
     # No deadline overruns happened:
     return True
 
 
-def scheduling_analysis_amc(task_set):
-    """AMC-rtb Response Time Analysis, as described in [2]."""
+def d_amc(task_set):
+    """Deterministic AMC-rtb Response Time Analysis, as described in [2]."""
+    epsilon = 1e-14
     for task in task_set.tasks:
         # 1.1) Build set of all tasks with higher priority:
-        hp = []
-        for j in task_set.tasks:
-            if j.priority > task.priority:
-                hp.append(j)
+        hp = [j for j in task_set.tasks if j.static_prio > task.static_prio]
+
         # 1.2) Build sets of all HI- and LO-critical tasks with higher priority:
         hp_hi = [t for t in hp if t.criticality == 'HI']
         hp_lo = [t for t in hp if t.criticality == 'LO']
 
         # 2) Iteration to fixed point for solving recurrence relation:
         # 2.1) R_LO:
-        task.r_lo = 0
-        r_next = -1
-        while task.r_lo != r_next:
-            task.r_lo = r_next
-            if task.r_lo > task.deadline:
+        res_lo = 0
+        res_next = -1
+        while res_lo != res_next:
+            res_lo = res_next
+            if res_lo > task.deadline:  # res growing monotonically
                 return False
-            sum_hp = task.c[task.criticality]
+            sum_hp = task.c_lo if task.criticality == 'LO' else task.c_hi
             for j in hp:
-                sum_hp += math.ceil(task.r_lo / j.period) * j.c['LO']
-            r_next = sum_hp
+                sum_hp += math.ceil(res_lo / j.period) * j.c_lo
+            res_next = sum_hp
 
         # 2.2 R_HI (only defined for HI-critical tasks):
         if task.criticality == 'HI':
-            task.r_hi = 0
-            r_next = -1
-            while task.r_hi != r_next:
-                task.r_hi = r_next
-                if task.r_hi > task.deadline:
+            res_hi = 0
+            res_next = -1
+            while res_hi != res_next:
+                res_hi = res_next
+                if res_hi > task.deadline:  # res growing monotonically
                     return False
-                sum_hp = task.c['HI']
+                sum_hp = task.c_hi
                 for j in hp_hi:
-                    sum_hp += math.ceil(task.r_hi / j.period) * j.c['HI']
-                r_next = sum_hp
+                    sum_hp += math.ceil(res_hi / j.period) * j.c_hi
+                res_next = sum_hp
 
         # 2.3 R_* (criticality change, only defined for HI-critical tasks):
         if task.criticality == 'HI':
-            task.r_asterisk = 0
-            r_next = -1
-            while task.r_asterisk != r_next:
-                task.r_asterisk = r_next
-                if task.r_asterisk > task.deadline:
+            res_asterisk = 0
+            res_next = -1
+            while res_asterisk != res_next:
+                res_asterisk = res_next
+                if res_asterisk > task.deadline:
                     return False
-                sum_hp = task.c['HI']
+                sum_hp = task.c_hi
                 for j in hp_hi:
-                    sum_hp += math.ceil(task.r_asterisk / j.period) * j.c['HI']
+                    sum_hp += math.ceil(res_asterisk / j.period) * j.c_hi
                 for k in hp_lo:
-                    sum_hp += math.ceil(task.r_lo / k.period) * k.c['LO']
-                r_next = sum_hp
+                    sum_hp += math.ceil(res_lo / k.period) * k.c_lo
+                res_next = sum_hp
 
     # No deadline overruns happened:
     return True
 
 
-def scheduling_analysis_edf_vd(task_set: TaskSet):
-    """Calculated according to theorem 1 in [3]."""
+def d_edf_vd(task_set: TaskSet):
+    """Deterministic EDF-VD schedulability analysis. Calculated according to theorem 1 in [3]."""
 
     def total_k_utilization(task_subset, k):
         """Total utilization at scenario criticality level k of tasks contained in task_subset."""
         result = 0.0
         for j in task_subset:
-            result += float(j.c[k]) / float(j.period)
+            c = j.c_hi if k == 'HI' else j.c_lo
+            result += float(c) / float(j.period)
         return result
 
     subset_lo = [t for t in task_set.tasks if t.criticality == 'LO']
@@ -195,7 +197,7 @@ def scheduling_analysis_edf_vd(task_set: TaskSet):
     return u_1_1 + min(u_2_2, u_2_1 / (1 - u_2_2)) <= 1     # Note that this condition is sufficient for schedulability.
 
 
-def stationary_backlog_iter(task_set: TaskSet, p_level=0, max_iter=200, epsilon=1e-14):
+def stationary_backlog_iter(task_set: TaskSet, p_level=0, max_iter=500, epsilon=1e-14):
     """Iterative calculation of the stationary backlog for a task set.
     
     This method finds the stationary backlog at the beginning of a task set's hyperperiod by repeatedly applying 
@@ -215,21 +217,25 @@ def stationary_backlog_iter(task_set: TaskSet, p_level=0, max_iter=200, epsilon=
         An array representing the probability distribution over the task set's stationary backlog at the beginning of 
         its hyperperiod.
     """
+    if task_set.u_avg > 1.0:
+        print("Average system utilization above 100%, stationary backlog undefined.")
+        return None
+
     sim = BacklogSim(task_set=task_set, p_level=p_level)
     last = sim.backlog
     dist = 1.
     i = 0
-    while dist > epsilon and i <= max_iter or i < 10:
+    while dist > epsilon and i <= max_iter:
         sim.step(dt=task_set.hyperperiod, mode='before')
         dist = quadratic_difference(last, sim.backlog)
-        print(dist)
+        # print(dist)
         last = sim.backlog
         i += 1
     if i > max_iter:
         print("Diverging backlog.")
-        return
+        return last
     else:
-        print("Convergence after %d iterations." % i)
+        # print("Convergence after %d iterations." % i)
         return last
 
 
@@ -308,44 +314,41 @@ def dmp_analysis_fp(task_set: TaskSet):
     objects.
     
     Args:
-        task_set: The task set under consideration. Note that this has to have set (fixed) task priorities.
+        task_set: Mixed-Criticality task set with probabilistic task execution times and fixed priority scheduling.
     """
     sims = [None] * len(task_set.tasks)
     for task in task_set.tasks:
-        if sims[task.priority] is None:
-            backlog = stationary_backlog_iter(task_set, task.priority)
-            sims[task.priority] = BacklogSim(task_set, task.priority, backlog)
+        if sims[task.static_prio] is None:
+            backlog = stationary_backlog_iter(task_set, task.static_prio)
+            sims[task.static_prio] = BacklogSim(task_set, task.static_prio, backlog)
 
     # Job Response Time Analysis
-    Job = collections.namedtuple('Job', ['rel_time', 'task'])
-    jobs = [Job(rel_time, task) for rel_time, task in task_set.job_releases]
-    job_responses = []
-    for job in jobs:
-        sim = sims[job.task.priority]
-        sim.step(job.rel_time - sim.t, mode='before')
-        part_response = convolve_pdf(sim.backlog, job.task.c_pdf)
-        preempts = [preempt for preempt in jobs
-                    if job.rel_time <= preempt.rel_time
-                    and job.task.priority < preempt.task.priority
-                    and preempt.rel_time < job.rel_time + job.task.deadline]
+    for job in task_set.jobs:
+        sim = sims[job.task.static_prio]
+        sim.step(job.release - sim.t, mode='before')
+        part_response = convolve_rescale(sim.backlog, job.task.c_pdf)
+        preempts = [preempt for preempt in task_set.jobs
+                    if job.release <= preempt.release
+                    and job.task.static_prio < preempt.task.static_prio
+                    and preempt.release < job.release + job.task.deadline]
         while preempts:
             next_preempt = preempts.pop(0)
             head, tail, _ = np.split(part_response,
-                                     [next_preempt.rel_time - job.rel_time + 1, job.task.deadline + 1])
+                                     [next_preempt.release - job.release + 1, job.task.deadline + 1])
             tail_lim = job.task.deadline - head.size + 1
             if tail.size:
                 tail = sig.convolve(tail, next_preempt.task.c_pdf[:tail_lim])[:tail_lim]
             part_response = np.concatenate((head, tail))
         part_response.resize(job.task.deadline + 1)
-        job_responses.append((job, part_response))
+        job.response = part_response
 
     for task in task_set.tasks:
-        task_responses = [res for j, res in job_responses if j.task == task]
+        task_responses = [j.response for j in task_set.jobs if j.task == task]
         task.avg_response = np.sum(task_responses, axis=0) / len(task_responses)
         task.dmp = 1. - np.sum(task.avg_response)
 
 
-def dmp_analysis_fp_given_lo_mode(task_set: TaskSet):
+def dmp_analysis_fp_given_lo_mode(input_task_set: TaskSet):  # TODO Refactor
     """
     HI-mode deadline miss probability analysis for fixed priority tasksets with conditional probability "given LO-mode".
     
@@ -356,12 +359,13 @@ def dmp_analysis_fp_given_lo_mode(task_set: TaskSet):
     to c_lo and normalizing it.
     
     Args:
-        task_set: The task set under consideration. Note that this has to have set (fixed) task priorities.
-        
+        input_task_set: Mixed-Criticality task set with probabilistic task execution times and fixed priority scheduling.        
     Returns:
         task_set: A copy of the input task set with adjusted task execution time distributions.
         p_switch: The probability of a mode switch happening within one hyperperiod.
     """
+    task_set = TaskSet(input_task_set.id, copy.deepcopy(input_task_set.tasks))
+
     # Probability of mode switch:
     p_no_overrun = []
     for task in task_set.tasks:
@@ -370,7 +374,6 @@ def dmp_analysis_fp_given_lo_mode(task_set: TaskSet):
     p_switch = 1. - np.prod(p_no_overrun)
 
     # Adjusted deadline miss probability:
-    task_set = TaskSet(task_set.id, copy.deepcopy(task_set.tasks))
     for task in task_set.tasks:
         if task.criticality == 'HI':
             task.c_pdf = task.c_pdf[:task.c_lo + 1] / np.sum(task.c_pdf[:task.c_lo + 1])
@@ -379,7 +382,74 @@ def dmp_analysis_fp_given_lo_mode(task_set: TaskSet):
     return task_set, p_switch
 
 
-def plot_backlogs(task_set, p_level=0, n_subplots = 9, add_stationary=False, scale='log'):
+def p_smc(task_set: TaskSet, thresh_lo: float=1e-6, thresh_hi: float=1e-9) -> bool:
+    """
+    Probabilistic static mixed criticality schedulability analysis.
+    
+    This method decides whether a set of probabilistic tasks can be considered schedulable or not. The analysis is based
+    on a task's probability of having no failing job in one hyperperiod, which is compared against the given thresholds.
+    
+    The effects of a mode switch are not considered in this analysis. The only difference between LO- and HI-critical
+    tasks is the choice of DMP threshold.
+    
+    Args:
+        task_set: Mixed-Criticality task set with probabilistic task execution times and fixed priority scheduling.
+        thresh_lo: LO-critical tasks have their DMP compared against this float to determine schedulability.
+        thresh_hi: HI-critical tasks have their DMP compared against this float to determine schedulability.
+        
+    Returns:
+        True, if P["At least one deadline missed in one hyperperiod"] for every task lies below the corresponding 
+        threshold, meaning the whole task set is considered 'schedulable'; else False.
+    """
+    dmp_analysis_fp(task_set)
+    for task in task_set.tasks:
+        thresh = thresh_hi if task.criticality == 'HI' else thresh_lo
+        p_failure = 1. - np.prod([1. - job.dmp for job in task_set.jobs if job.task == task])
+        if p_failure > thresh:
+            return False
+    return True
+
+
+def p_amc_black_box(task_set: TaskSet,
+                    hi_mode_duration: int=20,
+                    thresh_lo: float=1e-6, thresh_hi: float=1e-9,
+                    ) -> bool:  # TODO Issue: After LO-reset, system is assumed to restart with stationary backlog.
+    """
+    Probabilistic adaptive mixed criticality schedulability analysis.
+    
+    This method decides whether a set of probabilistic tasks can be considered schedulable or not. The analysis is based
+    on the tasks' average response times - and following from that, their per-hyperperiod deadline miss probability 
+    (DMP) with the system's stationary backlog.
+    
+    The probability of a mode switch happening is also taken into consideration. In this model, if a mode switch occurs,
+    the system goes in a "reset state", lasting a fixed number of hyperperiods. 
+    The behaviour in HI-mode is a "black box" and not considered in the analysis, it is simply assumed that all LO-tasks
+    are killed (100% DMP), and all HI-tasks succeed (0% DMP).
+    
+    Args:
+        task_set: Mixed-Criticality task set with probabilistic task execution times and fixed priority scheduling.
+        hi_mode_duration: Theoretical duration of HI-mode after a mode switch occurred.
+        thresh_lo: LO-critical tasks have their DMP compared against this float to determine schedulability.
+        thresh_hi: HI-critical tasks have their DMP compared against this float to determine schedulability.
+    """
+    task_set, p_switch = dmp_analysis_fp_given_lo_mode(task_set)
+    expected_switch_time = 1. / p_switch  # Expected number of hyperperiods until mode switch
+    total_time = expected_switch_time + hi_mode_duration
+    for task in task_set.tasks:
+        if task.criticality == 'HI':
+            thresh = thresh_hi
+            p_failure_hi = 0.
+        else:
+            thresh = thresh_lo
+            p_failure_hi = 1.
+        p_failure_lo = 1. - np.prod([1. - job.dmp for job in task_set.jobs if job.task == task])
+        # print(expected_switch_time / total_time, p_failure_lo, hi_mode_duration / total_time, p_failure_hi)
+        if (expected_switch_time / total_time) * p_failure_lo + (hi_mode_duration / total_time) * p_failure_hi > thresh:
+            return False
+    return True
+
+
+def plot_backlogs(task_set, p_level=0, n_subplots=9, add_stationary=False, scale='log'):
     """Plots the first n_subplots backlogs of task_set, considering only tasks of at least p_level priority."""
     fig = plt.figure()
     sim = BacklogSim(task_set, p_level)
@@ -391,6 +461,7 @@ def plot_backlogs(task_set, p_level=0, n_subplots = 9, add_stationary=False, sca
         xlim = len(sim.backlog)
     sim.__init__(task_set, p_level)
     for i in range(n_subplots):
+        print(i)
         sim.step(task_set.hyperperiod)
         plt.subplot(n_subplots + 2 // 3, 3, i + 1)
         plt.bar(range(len(sim.backlog)), sim.backlog)
@@ -407,7 +478,7 @@ def plot_backlogs(task_set, p_level=0, n_subplots = 9, add_stationary=False, sca
     plt.show()
 
 
-def convolve_pdf(a, b, percentile=1 - 1e-14):
+def convolve_rescale(a, b, percentile=1 - 1e-14):
     """Convolution of two discrete probability distribution functions."""
     # Convolve
     conv = sig.convolve(a, b)
@@ -459,24 +530,22 @@ def total_variation_distance(p: np.ndarray, q: np.ndarray):
     return max([abs(x - y) for x, y in zip(a, b)])
 
 if __name__ == '__main__':
-    # ts = gen.mc_fairgen_stoch(set_id=0, u_lo=0.9, mode='avg', max_tasks=10)
-    # ts.set_priorities_rm()
-    # ts.set_rel_times()
-    # ts.draw()
+    ts = gen.mc_fairgen_stoch(set_id=10, u_lo=0.95, m=1, mode='avg')
+    ts.set_priorities_rm()
+    ts.draw()
     # # print(stationary_backlog_iter(task_set=ts))
     # # stationary_backlog_analytic(ts, p_level=0)
-    # plot_backlogs(ts, add_stationary=True, scale='log')
-    ts = gen.dummy_taskset()
-    ts.set_priorities_rm()
-    ts.set_rel_times()
-    dmp_analysis_fp(ts)
-    for task in ts.tasks:
-        print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
+    plot_backlogs(ts, add_stationary=True, scale='log')
+    # ts = gen.dummy_taskset()
+    # dmp_analysis_fp(ts)
+    # for task in ts.tasks:
+    #     print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
+    # print(d_smc(ts), d_amc(ts), p_smc(ts), p_amc_black_box(ts))
 
-    ts_mod, p_switch = dmp_analysis_fp_given_lo_mode(ts)
-    print("Probability of mode switch:", p_switch)
-    for task in ts_mod.tasks:
-        print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
+    # ts_mod, p_switch = dmp_analysis_fp_given_lo_mode(ts)
+    # print("Probability of mode switch:", p_switch)
+    # for task in ts_mod.tasks:
+    #     print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
 
 
 

@@ -192,7 +192,8 @@ def mc_fairgen_det(
     n_lo = n - n_hi
 
     if periods is None:
-        periods = [1, 2, 3, 4, 5, 6, 15]  # Small hyperperiods with these period values
+        # periods = [1, 2, 3, 4, 5, 6, 15]  # Small hyperperiods with these period values
+        periods = [2 ** n for n in range(0, 5)]
     t = [time_granularity * i for i in nprd.choice(a=periods, size=n)]
     utils_hi = randfixedsum(n=n_hi, u=u_hi_hi * m, nsets=1, a=u_min, b=u_max)[0]
     utils_lo = bounded_uniform(u_hi_lo=u_hi_lo, u_hi_hi=u_hi_hi, m=m, n_hi=n_hi, u_min=u_min, u_hi=utils_hi)
@@ -218,12 +219,10 @@ def mc_fairgen_det(
 
     tasks = []
     for i in range(n_hi):
-        tasks.append(Task(task_id=i, criticality='HI', period=t[i], u_lo=utils_lo[i], c_lo=c_lo[i],
-                          u_hi=utils_hi, c_hi=c_hi[i], deadline=d[i]))
+        tasks.append(Task(task_id=i, criticality='HI', period=t[i], c_lo=c_lo[i], c_hi=c_hi[i], deadline=d[i]))
 
     for i in range(n_hi, n):
-        tasks.append(Task(task_id=i, criticality='LO', period=t[i], u_lo=utils_lo[i], c_lo=c_lo[i],
-                          deadline=d[i]))
+        tasks.append(Task(task_id=i, criticality='LO', period=t[i], c_lo=c_lo[i], deadline=d[i]))
     return TaskSet(set_id, tasks)
 
 
@@ -240,7 +239,7 @@ def mc_fairgen_stoch(
         time_granularity=100,  # Multiplier for smaller discrete time units.
         implicit_deadlines=False,
         distribution_cls=WeibullDist,
-        c_lo_percent=0.999, c_hi_percent=0.99999) -> [TaskSet]:
+        c_lo_percent=1.-1e-6, c_hi_percent=1.-1e-9) -> [TaskSet]:
     """Returns a fair task set of tasks with stochastic execution times.
     
     Can either be used to generate task sets with specific system utilizations or with random values.
@@ -294,9 +293,9 @@ def mc_fairgen_stoch(
                 distribution = distribution_cls.from_percentile(x=t.c_lo, p=c_lo_percent)
             elif mode == 'avg':
                 distribution = distribution_cls.from_ev(ev=t.c_lo)
-            t.c_lo = math.ceil(distribution.percentile(p=c_lo_percent))
-            if t.c_lo > t.deadline:
-                break
+                t.c_lo = math.ceil(distribution.percentile(p=c_lo_percent))
+                if t.c_lo > t.deadline:
+                    break
             if t.criticality == 'HI':
                 t.c_hi = math.ceil(distribution.percentile(p=c_hi_percent))
                 if t.c_hi > t.deadline:
@@ -309,23 +308,19 @@ def mc_fairgen_stoch(
 
 def dummy_taskset():
     """Returns a small dummy task set with only two tasks. These can be used for testing."""
-    t1 = Task(task_id=0, criticality='HI', period=4, deadline=3, u_lo=0.25, c_lo=1, u_hi=0.5, c_hi=2, phase=0)
-    t2 = Task(task_id=1, criticality='LO', period=6, deadline=5, u_lo=0.667, c_lo=4, u_hi=None, c_hi=None, phase=0)
+    t1 = Task(task_id=0, criticality='HI', period=4, deadline=4, c_lo=1, c_hi=2, phase=0)
+    t2 = Task(task_id=1, criticality='LO', period=6, deadline=6, c_lo=4, phase=0)
     t1.c_pdf = np.array([0.0, 0.5, 0.5])
     t2.c_pdf = np.array([0.0, 0.0, 0.2, 0.3, 0.5])
     ts = TaskSet(0, [t1, t2])
     ts.set_priorities_rm()
-    ts.set_rel_times()
     return ts
 
 
 if __name__ == '__main__':
-    if __name__ == '__main__':
-        elapsed = 0
-        for k in range(10):
-            taskset = mc_fairgen_stoch(set_id=0, u_lo=0.9, mode='max', implicit_deadlines=False,
-                                       u_min=0.01, max_tasks=10, time_granularity=100)
-        taskset.draw(scale='log')
+    ts = dummy_taskset()
+
+
 
 
 """
