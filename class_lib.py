@@ -64,6 +64,7 @@ class Task(object):
     def u_hi(self):
         """Task utilization in HI-mode."""
         return None if self.c_hi is None else self.c_hi / self.period
+
     @property
     def u_avg(self):
         """Average utilization over whole c_pdf"""
@@ -105,21 +106,24 @@ class TaskSet(object):
     Attributes:
         set_id: Integer value that uniquely identifies the instance of TaskSet.
         tasks: List of tasks contained in this task set.
+        discrete: True if task periods and execution times are integers.
         u_lo: Total (system) utilization in LO-mode. Either based on c_lo, or on average execution times.
         u_hi: Total (system) utilization in HI-mode. Based on c_hi values.
         hyperperiod: Defined as the least common multiple over all its tasks' periods.
         jobs: A list of namedtuples, each representing the release of a new job instance, ordered by release time.
     """
-    def __init__(self, set_id, tasks: [Task]):
+    def __init__(self, set_id, tasks: [Task], discrete=True):
         self.id = set_id
         self.tasks = tasks
-        self.hyperperiod = lcm([t.period for t in self.tasks])
 
-        self.jobs = []
-        for task in self.tasks:
-            releases = [k * task.period + task.phase for k in range(self.hyperperiod // task.period)]
-            self.jobs.extend([Job(rel, task) for rel in releases])
-        self.jobs.sort(key=lambda x: x.release)
+        if discrete:
+            self.hyperperiod = lcm([t.period for t in self.tasks])
+
+            self.jobs = []
+            for task in self.tasks:
+                releases = [k * task.period + task.phase for k in range(self.hyperperiod // task.period)]
+                self.jobs.extend([Job(rel, task) for rel in releases])
+            self.jobs.sort(key=lambda x: x.release)
 
     @property
     def n_lo(self):

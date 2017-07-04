@@ -10,6 +10,17 @@ import numpy as np
 import numpy.random as nprd
 from class_lib import Task, TaskSet, WeibullDist
 
+def uunifast(n, util):
+    """Returns an array of n values in (0, 1) which sum up to util. See [3]."""
+    sum_u = util
+    vect_u = np.empty(n)
+    for i in range(n - 1):
+        next_sum_u = sum_u * nprd.random() ** (1.0 / (float(n - i)))
+        vect_u[i] = sum_u - next_sum_u
+        sum_u = next_sum_u
+    vect_u[-1] = sum_u
+    return vect_u
+
 
 def randfixedsum(n, u, nsets, a, b):
     """Randomly and uniformly generates vectors with a specified sum and values in a specified interval.
@@ -58,8 +69,8 @@ def randfixedsum(n, u, nsets, a, b):
     t = np.zeros((n - 1, n))
 
     for i in np.arange(2, (n+1)):
-        tmp1 = w[i - 2, np.arange(1, (i + 1))] * s1[np.arange(0, i)] / float(i)
-        tmp2 = w[i - 2, np.arange(0, i)] * s2[np.arange((n - i), n)] / float(i)
+        tmp1 = (w[i - 2, np.arange(1, (i + 1))] / float(i)) * s1[np.arange(0, i)]
+        tmp2 = (w[i - 2, np.arange(0, i)] / float(i)) * s2[np.arange((n - i), n)]
         w[i - 1, np.arange(1, (i + 1))] = tmp1 + tmp2
         tmp3 = w[i - 1, np.arange(1, (i + 1))] + tiny
         tmp4 = np.array((s2[np.arange((n - i), n)] > s1[np.arange(0, i)]))
@@ -116,11 +127,13 @@ def bounded_uniform(u_hi_lo, u_hi_hi, m, n_hi, u_min, u_hi):
         A list u_lo of task utilizations for every HI-criticality task.
     """
     u_lo = []
-    arr = sorted(u_hi, reverse=True)
+    # arr = sorted(u_hi, reverse=True)
+    u_hi[::-1].sort()
+
     u_lo_rem = u_hi_lo * m
     u_hi_rem = u_hi_hi * m
     n_hi_rem = n_hi - 1
-    for u in arr:
+    for u in u_hi:
         u_hi_rem -= u
         curr = nprd.uniform(max(u_min, u_lo_rem - u_hi_rem), min((u_lo_rem - (n_hi_rem * u_min)), u))
         n_hi_rem -= 1
@@ -168,26 +181,27 @@ def mc_fairgen_det(
     """
 
     if u_hi is None:
-        u_hi_hi = nprd.uniform(low=max_tasks*u_min, high=1.0)
+        u_hi_hi = nprd.uniform(low=max_tasks * u_min, high=1.0)
     else:
         u_hi_hi = u_hi
 
-    p_hi = nprd.randint(1, 10) / 10.0  # percentage of hi-criticality tasks
+    p_hi = nprd.randint(1, 10) / 10.  # fraction of hi-criticality tasks
     p_lo = 1. - p_hi
 
     if u_lo is None:
-        u_hi_lo = nprd.uniform(low=max_tasks*p_hi*u_min, high=u_hi_hi)
-        u_lo_lo = nprd.uniform(low=max_tasks*p_lo*u_min, high=1 - u_hi_lo)
+        u_hi_lo = nprd.uniform(low=max_tasks * p_hi * u_min, high=u_hi_hi)
+        u_lo_lo = nprd.uniform(low=max_tasks * p_lo * u_min, high=1 - u_hi_lo)
     else:
-        u_hi_lo = nprd.uniform(low=max_tasks*p_hi*u_min, high=min(u_hi_hi, u_lo) - max_tasks*p_lo*u_min)
+        u_hi_lo = nprd.uniform(low=max_tasks * p_hi * u_min, high=min(u_hi_hi, u_lo) - max_tasks * p_lo * u_min)
         u_lo_lo = u_lo - u_hi_lo
 
     n_min_hi = int(math.ceil(u_hi_hi * m / u_max))  # minimum required total tasks
     n_min_lo = int(math.ceil(u_lo_lo * m / u_max))
     n_min = max(m + 1, int(math.ceil(n_min_hi / p_hi)), int(math.ceil(n_min_lo / (1 - p_hi))))
-    if n_min > max_tasks:
-        n_min = max_tasks
-    n = nprd.randint(n_min, max_tasks * m + 1)  # total numbers of tasks
+    if n_min < max_tasks * m:  # randint only working if low < high
+        n = nprd.randint(n_min, max_tasks * m + 1)
+    else:
+        n = max_tasks * m
     n_hi = max(int(p_hi * n), n_min_hi)
     n_lo = n - n_hi
 
@@ -296,10 +310,7 @@ def mc_fairgen_stoch(
                 t.c_lo = math.ceil(distribution.percentile(p=c_lo_percent))
                 if t.c_lo > t.deadline:
                     break
-            if t.criticality == 'HI':
-                t.c_hi = math.ceil(distribution.percentile(p=c_hi_percent))
-                if t.c_hi > t.deadline:
-                    break
+
             cutoff = c_hi_percent if t.criticality == 'HI' else c_lo_percent
             t.c_pdf = distribution.discrete_pd(cutoff=cutoff)
         else:
@@ -329,4 +340,6 @@ Literature:
     Techniques For The Synthesis Of Multiprocessor Tasksets
 [2] Ramanathan, Easwaran
     Evaluation of Mixed-Criticality Scheduling Algorithms using a Fair Taskset Generator
+[3] Bini, Buttazzo
+    Measuring the Performance of Schedulability Tests
 """

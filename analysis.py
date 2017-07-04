@@ -5,16 +5,17 @@ probability and so forth. It makes use of the classes defined in module class_li
 -- Luca Stalder, 2017
 """
 
-import collections
 import math
 import copy
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import numpy as np
 import scipy.signal as sig
 import sympy as sp
 from class_lib import TaskSet
 import generation as gen
+import sortedcontainers as socon
+import time
+import itertools
 
 
 class BacklogSim(object):
@@ -121,7 +122,7 @@ def d_smc(task_set: TaskSet):
     return True
 
 
-def d_amc(task_set):
+def d_amc_rtb(task_set):
     """Deterministic AMC-rtb Response Time Analysis, as described in [2]."""
     epsilon = 1e-14
     for task in task_set.tasks:
@@ -197,7 +198,7 @@ def d_edf_vd(task_set: TaskSet):
     return u_1_1 + min(u_2_2, u_2_1 / (1 - u_2_2)) <= 1     # Note that this condition is sufficient for schedulability.
 
 
-def stationary_backlog_iter(task_set: TaskSet, p_level=0, max_iter=500, epsilon=1e-14):
+def stationary_backlog_iter(task_set: TaskSet, p_level=0, max_iter=1000, epsilon=1e-14):
     """Iterative calculation of the stationary backlog for a task set.
     
     This method finds the stationary backlog at the beginning of a task set's hyperperiod by repeatedly applying 
@@ -411,7 +412,7 @@ def p_smc(task_set: TaskSet, thresh_lo: float=1e-6, thresh_hi: float=1e-9) -> bo
 
 
 def p_amc_black_box(task_set: TaskSet,
-                    hi_mode_duration: int=20,
+                    hi_mode_duration: int=1,
                     thresh_lo: float=1e-6, thresh_hi: float=1e-9,
                     ) -> bool:  # TODO Issue: After LO-reset, system is assumed to restart with stationary backlog.
     """
@@ -445,6 +446,107 @@ def p_amc_black_box(task_set: TaskSet,
         p_failure_lo = 1. - np.prod([1. - job.dmp for job in task_set.jobs if job.task == task])
         # print(expected_switch_time / total_time, p_failure_lo, hi_mode_duration / total_time, p_failure_hi)
         if (expected_switch_time / total_time) * p_failure_lo + (hi_mode_duration / total_time) * p_failure_hi > thresh:
+            return False
+    return True
+
+
+def p_smc_monte_carlo(task_set, nhyperperiods=10000, thresh_lo=1e-6, thresh_hi=1e-9):
+
+    start_total = time.time()
+    elapsed = 0
+
+    class JobInstance(object):
+        def __init__(self, task, release, remaining):
+            self.task = task
+            self.release = release  # Tuple (hyperperiod of release, release time)
+            self.remaining = remaining
+            self.abs_deadline = (release[0] + (release[1] + self.task.deadline) // task_set.hyperperiod,
+                                 (release[1] + self.task.deadline) % task_set.hyperperiod)
+
+    def exec_backlog(dt):
+        """
+        
+        
+        dt will never exceed the time to the next release or the end of the hyperperiod.  
+        """
+        nonlocal t
+        while dt > 0:
+            if not backlog:
+                t += dt
+                break
+            elif backlog[0].remaining > dt:
+                t += dt
+                backlog[0].remaining -= dt
+                break
+            else:
+                done = backlog.pop(0)
+                t += done.remaining
+                dt -= done.remaining
+                if done.abs_deadline < (i, t):
+                    done.task.failed_hps.add(done.release[0])
+
+    ###
+    class CustomContainer(object):
+        def __init__(self):
+            self.items = [[] for i in range(len(task_set.tasks))]
+            self.size = 0
+
+        def __bool__(self):
+            return self.size > 0
+
+        def __iter__(self):
+            return self.as_list.__iter__()
+
+        def __getitem__(self, item):
+            return self.as_list.__getitem__(item)
+
+        def add(self, new):
+            self.items[new.task.static_prio].append(new)
+            self.size += 1
+
+        def pop(self, i):
+            for a in self.items[::-1]:
+                if a:
+                    self.size -= 1
+                    return a.pop(i)
+
+        @property
+        def as_list(self):
+            return list(itertools.chain.from_iterable(self.items[::-1]))
+    ###
+
+    # backlog = socon.SortedListWithKey([], key=lambda rel: (-rel.task.static_prio, rel.release))  # ~42%
+    backlog = CustomContainer()  # ~35%
+    for task in task_set.tasks:
+        task.exec_times = np.random.choice(a=range(len(task.c_pdf)),
+                                           size=nhyperperiods * (task_set.hyperperiod // task.period),
+                                           p=task.c_pdf)
+        task.failed_hps = set()  # All hyperperiods where an instance of this task missed its deadline
+    for i in range(nhyperperiods):
+        # print(i)
+        # Reset timer, build list of all releases in new hyperperiod
+        t = 0
+        releases = list(task_set.jobs)
+
+        while releases:
+            next_rel = releases.pop(0)
+            exec_backlog(next_rel.release - t)
+            exec_time, next_rel.task.exec_times = next_rel.task.exec_times[-1], next_rel.task.exec_times[:-1]
+            start = time.time()
+            backlog.add(JobInstance(task=next_rel.task, release=(i, next_rel.release), remaining=exec_time))
+            stop = time.time()
+            elapsed += stop - start
+        else:
+            exec_backlog(task_set.hyperperiod - t)
+    stop_total = time.time()
+    # print("Elapsed here:", elapsed)
+    # print("Elapsed total:", stop_total - start_total)
+    # print(100 * elapsed / (stop_total - start_total), "%")
+
+    for task in task_set.tasks:
+        p_fail = len(task.failed_hps) / nhyperperiods
+        thresh = thresh_hi if task.criticality == 'HI' else thresh_lo
+        if p_fail > thresh:
             return False
     return True
 
@@ -530,13 +632,17 @@ def total_variation_distance(p: np.ndarray, q: np.ndarray):
     return max([abs(x - y) for x, y in zip(a, b)])
 
 if __name__ == '__main__':
-    ts = gen.mc_fairgen_stoch(set_id=10, u_lo=0.95, m=1, mode='avg')
-    ts.set_priorities_rm()
-    ts.draw()
+    ts = gen.mc_fairgen_stoch(set_id=10, u_lo=0.5, m=1, mode='max')
+    # ts = gen.mc_fairgen_det(set_id=0, u_lo=0.95)
+    # ts.set_priorities_rm()
+    # print(ts.description)
+    # ts.draw()
     # # print(stationary_backlog_iter(task_set=ts))
     # # stationary_backlog_analytic(ts, p_level=0)
-    plot_backlogs(ts, add_stationary=True, scale='log')
-    # ts = gen.dummy_taskset()
+    # plot_backlogs(ts, add_stationary=True, scale='log')
+    ts = gen.dummy_taskset()
+    ts.set_priorities_rm()
+    p_smc_monte_carlo(ts)
     # dmp_analysis_fp(ts)
     # for task in ts.tasks:
     #     print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
@@ -546,6 +652,11 @@ if __name__ == '__main__':
     # print("Probability of mode switch:", p_switch)
     # for task in ts_mod.tasks:
     #     print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
+    # for i in range(100):
+    #     ts = gen.mc_fairgen_stoch(set_id=10, u_lo=0.95, m=1, mode='max', implicit_deadlines=True)
+    #     ts.set_priorities_rm()
+    #     print(p_smc_monte_carlo(ts))
+
 
 
 
