@@ -10,14 +10,15 @@ import multiprocessing as mp
 import functools as ft
 import time
 
-utils = [0.2 + k * 0.05 for k in range(37)] #+ [1.0 + k * 0.05 for k in range(11)]
+utils = [0.2 + k * 0.05 for k in range(37)]
+# utils = [0.2 + k * 0.1 for k in range(19)]
 Mode = col.namedtuple('Mode', ('name', 'color', 'linestyle', 'marker'))
 modes = [
     Mode('d_smc', 'blue', 'dashed', 'o'),
     Mode('d_amc', 'red', 'dashed', 's'),
     Mode('p_smc', 'green', 'dashed', '^'),
     Mode('p_amc_bb', 'magenta', 'dashed', '*'),
-    Mode('p_smc_monte_carlo', 'cyan', 'dashed', 'v')
+    # Mode('p_smc_monte_carlo', 'cyan', 'dashed', 'v')
 ]
 nsets = 10
 
@@ -33,8 +34,8 @@ def schedulability_rates(util):
         results['d_smc'].append(ana.d_smc(task_set))
         results['d_amc'].append(ana.d_amc_rtb(task_set))
         results['p_smc'].append(ana.p_smc(task_set))
-        results['p_amc_bb'].append(ana.p_amc_black_box(task_set))
-        results['p_smc_monte_carlo'].append(ana.p_smc_monte_carlo(task_set))
+        results['p_amc_bb'].append(ana.p_amc_black_box(task_set, hi_mode_duration=0))  # TODO
+        # results['p_smc_monte_carlo'].append(ana.p_smc_monte_carlo(task_set))
     return {mode.name: np.average(results[mode.name]) * 100 for mode in modes}
 
 
