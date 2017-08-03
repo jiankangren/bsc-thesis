@@ -6,9 +6,13 @@ It makes use of the classes defined in module class_lib.
 """
 
 import math
+
 import numpy as np
 import numpy.random as nprd
-from class_lib import Task, TaskSet, WeibullDist
+import decimal as dec
+
+from lib import Task, TaskSet, WeibullDist
+
 
 def uunifast(n, util):
     """Returns an array of n values in (0, 1) which sum up to util. See [3]."""
@@ -142,7 +146,78 @@ def bounded_uniform(u_hi_lo, u_hi_hi, m, n_hi, u_min, u_hi):
     return u_lo
 
 
-def mc_fairgen_det(
+def set_priorities_rm(task_set):
+    """Fixed priority scheduling. Assigns rate-monotonic priorities (shorter period -> higher priority)."""
+    tasks = sorted(task_set.tasks, key=lambda t: t.period, reverse=True)
+    for idx, task in enumerate(tasks):
+        task.static_prio = idx
+
+
+def set_priorities_dm(task_set):
+    """Fixed priority scheduling. Assigns deadline-monotonic priorities (shorter deadline -> higher priority)."""
+    tasks = sorted(task_set.tasks, key=lambda t: t.deadline, reverse=True)
+    for idx, task in enumerate(tasks):
+        task.static_prio = idx
+
+
+#####################################
+# Deterministic Parameter Synthesis #
+#####################################
+
+
+def dummy_taskset():
+    """Returns a small dummy task set with only two tasks. These can be used for testing."""
+    t1 = Task(task_id=0, criticality='HI', period=4, deadline=4, c_lo=1, c_hi=2, phase=0)
+    t2 = Task(task_id=1, criticality='LO', period=6, deadline=6, c_lo=4, phase=0)
+    t1.c_pmf = np.array([0.0, 0.5, 0.5])
+    t2.c_pmf = np.array([0.0, 0.0, 0.2, 0.3, 0.5])
+    return TaskSet(0, [t1, t2])
+
+
+def simple_gen(
+        set_id,
+        u_lo=None,
+        cf=1.5,
+        cp=0.5,
+        n_tasks=10,
+        implicit_deadlines=False
+) -> TaskSet:
+    """Generates mixed-criticality task sets based on the UUniFast algorithm.
+    
+    Args:
+        set_id: Identifier for newly generated task set.
+        u_lo: Desired normalized system utilization in LO-mode. Uniformly picked at random if None.
+        cf: Criticality factor. C(HI) values are cf times higher than the corresponding C(LO) value.
+        cp: Criticality probability. Chance for a task to be of HI criticality.
+        n_tasks: Number of tasks in the generated task set.
+        implicit_deadlines: If true, deadline == period; if false, deadlines are picked uniformly at random.  
+    
+    Returns:
+        A TaskSet object (defined in module class_lib) with the desired parameters. Note that this task set's
+        parameters are non-integer values and thus unsuited for practical, hyperperiod-based response time analysis.
+    """
+    if u_lo is None:
+        u_lo = nprd.uniform(0.05, 1.)
+    utils_lo = uunifast(n_tasks, u_lo)
+    tasks = []
+    for i in range(n_tasks):
+        period = 10 ** nprd.uniform(1, 3)
+        crit = nprd.choice(['HI', 'LO'], p=[cp, 1. - cp])
+        c_lo = utils_lo[i] * period
+        tmp = cf * utils_lo[i] * period
+        c_hi = tmp if crit == 'HI' else None
+        if not implicit_deadlines and tmp < period:
+            deadline = period
+        elif tmp < period:
+            deadline = nprd.uniform(tmp, period)
+        else:
+            deadline = tmp
+        tasks.append(Task(task_id=i, criticality=crit, period=period, deadline=deadline,
+                          c_lo=c_lo, c_hi=c_hi))
+    return TaskSet(set_id, tasks, build_job_list=False)
+
+
+def mc_fairgen(
         set_id,  # Identifier for newly generated task set
         u_lo=None,  # Normalized (per-core) system utilization in LO-mode
         u_hi=None,  # Normalized (per-core) system utilization in HI-mode
@@ -151,10 +226,10 @@ def mc_fairgen_det(
         u_max=0.99,  # Maximum per-task utilization
         max_tasks=10,
         periods=None,  # List of possible period values (a default is assigned if this is None)
-        time_granularity=100,  # Multiplier for smaller discrete time units.
-        implicit_deadlines=False
+        time_granularity=10,  # Multiplier for smaller discrete time units.
+        implicit_deadlines=False,
 ) -> TaskSet:
-    """Returns a fair task set of deterministic tasks.
+    """Returns a fair set of deterministic tasks.
     
     Can either be used to generate task sets with specific system utilizations or with random values.
     
@@ -172,14 +247,12 @@ def mc_fairgen_det(
         max_tasks: Maximum number of tasks in the generated task set.
         periods: List of possible period values. A default list resulting in a small hyperperiod is assigned if None.
         time_granularity: Multiplier to introduce smaller discrete time units.
-        implicit_deadlines: If true, deadlines are equal to the period, 
-            if false deadlines are picked uniformly at random. 
+        implicit_deadlines: If true, deadline == period; if false, deadlines are picked uniformly at random.
             
     Returns:
         A TaskSet object (defined in module class_lib) with the desired parameters. Note that this task set does not 
         have any priorities or job release times assigned yet. 
     """
-
     if u_hi is None:
         u_hi_hi = nprd.uniform(low=max_tasks * u_min, high=1.0)
     else:
@@ -206,22 +279,27 @@ def mc_fairgen_det(
     n_lo = n - n_hi
 
     if periods is None:
-        # periods = [1, 2, 3, 4, 5, 6, 15]  # Small hyperperiods with these period values
-        periods = [2 ** n for n in range(0, 5)]
+        # periods = [2 ** n for n in range(0, 5)]  # This will result in manageably small hyperperiods.
+        periods = [5, 10, 20, 25, 50, 100]  # This will yield a manageably small hyperperiod.
     t = [time_granularity * i for i in nprd.choice(a=periods, size=n)]
     utils_hi = randfixedsum(n=n_hi, u=u_hi_hi * m, nsets=1, a=u_min, b=u_max)[0]
     utils_lo = bounded_uniform(u_hi_lo=u_hi_lo, u_hi_hi=u_hi_hi, m=m, n_hi=n_hi, u_min=u_min, u_hi=utils_hi)
     utils_lo.extend(randfixedsum(n=n_lo, u=u_lo_lo * m, nsets=1, a=u_min, b=u_max)[0])
 
-    c_lo = []
-    c_hi = []
-    d = []
+    c_lo, c_hi, d = [], [], []
 
     for i in range(n):
-        c_lo.append(math.floor(utils_lo[i] * t[i]))
+        c_lo.append(int(round(utils_lo[i] * t[i])))
+        # c_lo.append(int(math.ceil(utils_lo[i] * t[i])))
+        # c_lo.append(int(dec.Decimal(utils_lo[i] * t[i]).to_integral_value(dec.ROUND_HALF_UP)))
 
     for i in range(n_hi):
-        c_hi.append(math.floor(utils_hi[i] * t[i]))
+        c_hi.append(int(round(utils_hi[i] * t[i])))
+        # c_hi.append(int(math.ceil(utils_hi[i] * t[i])))
+        # c_hi.append(int(dec.Decimal(utils_hi[i] * t[i]).to_integral_value(dec.ROUND_HALF_UP)))
+
+        # TODO
+        # Note: The use of Decimal here is to avoid rounding c_lo = 0.5 down to 0 (as done with mathematical rounding).
 
     if implicit_deadlines:
         d = list(t)
@@ -240,43 +318,112 @@ def mc_fairgen_det(
     return TaskSet(set_id, tasks)
 
 
-def mc_fairgen_stoch(
-        set_id,  # Identifier for newly generated task set
-        u_lo=None,  # Normalized (per-core) system utilization in LO-mode
-        u_hi=None,  # Normalized (per-core) system utilization in HI-mode
-        mode='max',  # Setting whether u_lo is meant to be the maximum (c_lo_percent) or average system utilization
-        m=1,  # No. of cores
-        u_min=0.01,  # Minimum per-task utilization
-        u_max=0.99,  # Maximum per-task utilization
-        max_tasks=10,
-        periods=None,  # List of possible period values (a default is assigned if this is None)
-        time_granularity=100,  # Multiplier for smaller discrete time units.
-        implicit_deadlines=False,
-        distribution_cls=WeibullDist,
-        c_lo_percent=1.-1e-6, c_hi_percent=1.-1e-9) -> [TaskSet]:
-    """Returns a fair task set of tasks with stochastic execution times.
-    
-    Can either be used to generate task sets with specific system utilizations or with random values.
-    
-    Fair in this context means introducing as little bias towards specific scheduling policies, etc. as possible.
-    
-    This method is based on [2], using mc_fairgen_det for its starting values, but also introduces stochastic task 
-    execution times. The distributions are generated based on c_lo values.
-    
+###########################
+# Probabilistic Synthesis #
+###########################
+
+# def mc_fairgen_stoch(
+#         set_id,  # Identifier for newly generated task set
+#         u_lo=None,  # Normalized (per-core) system utilization in LO-mode
+#         u_hi=None,  # Normalized (per-core) system utilization in HI-mode
+#         mode='max',  # Setting whether u_lo is meant to be the maximum (c_lo_percent) or average system utilization
+#         m=1,  # No. of cores
+#         u_min=0.01,  # Minimum per-task utilization
+#         u_max=0.99,  # Maximum per-task utilization
+#         max_tasks=10,
+#         periods=None,  # List of possible period values (a default is assigned if this is None)
+#         time_granularity=100,  # Multiplier for smaller discrete time units.
+#         implicit_deadlines=False,
+#         distribution_cls=WeibullDist,
+#         c_lo_percent=1 - 1e-6, c_hi_percent=1 - 1e-9) -> [TaskSet]:
+#     """Returns a fair task set of tasks with stochastic execution times.
+#
+#     Can either be used to generate task sets with specific system utilizations or with random values.
+#
+#     Fair in this context means introducing as little bias towards specific scheduling policies, etc. as possible.
+#
+#     This method is based on [2], using mc_fairgen_det for its starting values, but also introduces stochastic task
+#     execution times. The distributions are generated based on c_lo values.
+#
+#     Args:
+#         set_id: Identifier for newly generated task set.
+#         u_lo: Desired normalized (per-core) system utilization in LO-mode. Fairly picked at random if None.
+#         u_hi: Desired normalized (per-core) system utilization in HI-mode. Fairly picked at random if None.
+#         mode: If set to 'max', the deterministic c_lo value is used as a max value for a tasks distribution.
+#             If set to 'avg', c_lo is used as an expected value for the tasks distribution.
+#         m: Number of cores in the system.
+#         u_min: Minimum per-task utilization.
+#         u_max: Maximum per-task utilization.
+#         max_tasks: Maximum number of tasks in the generated task set.
+#         periods: List of possible period values. A default list resulting in a small hyperperiod is assigned if None.
+#         time_granularity: Multiplier to introduce smaller discrete time units.
+#         implicit_deadlines: If true, deadlines are equal to the period,
+#             if false deadlines are picked uniformly at random.
+#         distribution_cls: The class of distribution used for generating task sets. As standard, WeibullDist introduced
+#             in module class_lib is used, but in principle, any custom distribution class can be implemented, as long as
+#             they contain EVERY method seen in class_lib.WeibullDist.
+#         c_lo_percent: LO-criticality tasks' distribution is chosen such that in discretizing them, their PDF gets
+#             cropped at the c_lo_percent-th percentile.
+#         c_hi_percent: HI-criticality tasks' distribution is chosen such that in discretizing them, their PDF gets
+#             cropped at the c_hi_percent-th percentile.
+#
+#     Returns:
+#         A TaskSet object (defined in module class_lib) with the desired parameters. c_lo and c_hi values may have been
+#         adjusted from their original values generated by mc_fairgen_det.
+#         Note that this task set does not have any priorities or job release times assigned yet.
+#     """
+#     while True:
+#         # print("loop")
+#         ts = mc_fairgen(set_id=set_id,
+#                         u_lo=u_lo,
+#                         u_hi=u_hi,
+#                         m=m,
+#                         u_min=u_min,
+#                         u_max=u_max,
+#                         max_tasks=max_tasks,
+#                         periods=periods,
+#                         time_granularity=time_granularity,
+#                         implicit_deadlines=implicit_deadlines
+#                         )
+#         for t in ts.tasks:
+#             # print("start")
+#             if mode == 'max':
+#                 # distribution = distribution_cls.from_percentile(x=t.c_lo, p=c_lo_percent)
+#                 if t.criticality == 'HI':
+#                     distribution = distribution_cls.from_percentile(
+#                         x_lo=t.c_lo, p_lo=c_lo_percent, x_hi=t.c_hi, p_hi=c_hi_percent)
+#                 else:
+#                     distribution = distribution_cls.from_percentile(
+#                         x_lo=t.c_lo, p_lo=c_lo_percent, x_hi=t.c_lo * 1.5, p_hi=c_hi_percent)
+#             elif mode == 'avg':
+#                 distribution = distribution_cls.from_ev(ev=t.c_lo)
+#                 t.c_lo = math.ceil(distribution.percentile(p=c_lo_percent))
+#                 # if t.c_lo > t.deadline:
+#                 #     break
+#
+#             cutoff = c_hi_percent if t.criticality == 'HI' else c_lo_percent
+#             # print(cutoff)
+#             # cutoff = 1 - c_hi_percent
+#             t.c_pdf = distribution.discrete_pmf(cutoff=cutoff)
+#             # print("done", len(t.c_pmf))
+#         else:
+#             return ts
+
+
+def synth_c_dist(task_set,
+                 mode='max',
+                 distribution_cls=WeibullDist,
+                 c_lo_percent=1 - 1e-5, c_hi_percent=1 - 1e-9): # TODO
+    """Adds a computation time PMF to every task in the set.
+
+    Distributions are generated based on the task's deterministic parameters. C(LO) can either set to be the maximum,
+    or average computation time. New distributions other than the default one can be implemented as well, but need to
+    offer the entire interface given in the default one to be fully usable.
+
     Args:
-        set_id: Identifier for newly generated task set.
-        u_lo: Desired normalized (per-core) system utilization in LO-mode. Fairly picked at random if None.
-        u_hi: Desired normalized (per-core) system utilization in HI-mode. Fairly picked at random if None.
+        task_set: Set of tasks to which PMFs are added.
         mode: If set to 'max', the deterministic c_lo value is used as a max value for a tasks distribution.
             If set to 'avg', c_lo is used as an expected value for the tasks distribution.
-        m: Number of cores in the system.
-        u_min: Minimum per-task utilization.
-        u_max: Maximum per-task utilization.
-        max_tasks: Maximum number of tasks in the generated task set.
-        periods: List of possible period values. A default list resulting in a small hyperperiod is assigned if None.
-        time_granularity: Multiplier to introduce smaller discrete time units.
-        implicit_deadlines: If true, deadlines are equal to the period, 
-            if false deadlines are picked uniformly at random. 
         distribution_cls: The class of distribution used for generating task sets. As standard, WeibullDist introduced
             in module class_lib is used, but in principle, any custom distribution class can be implemented, as long as
             they contain EVERY method seen in class_lib.WeibullDist.
@@ -284,54 +431,23 @@ def mc_fairgen_stoch(
             cropped at the c_lo_percent-th percentile.
         c_hi_percent: HI-criticality tasks' distribution is chosen such that in discretizing them, their PDF gets 
             cropped at the c_hi_percent-th percentile.    
-            
-    Returns:
-        A TaskSet object (defined in module class_lib) with the desired parameters. c_lo and c_hi values may have been
-        adjusted from their original values generated by mc_fairgen_det.
-        Note that this task set does not have any priorities or job release times assigned yet.
     """
-    while True:
-        ts = mc_fairgen_det(set_id=set_id,
-                            u_lo=u_lo,
-                            u_hi=u_hi,
-                            m=m,
-                            u_min=u_min,
-                            u_max=u_max,
-                            max_tasks=max_tasks,
-                            periods=periods,
-                            time_granularity=time_granularity,
-                            implicit_deadlines=implicit_deadlines
-                            )
-        for t in ts.tasks:
-            if mode == 'max':
-                distribution = distribution_cls.from_percentile(x=t.c_lo, p=c_lo_percent)
-            elif mode == 'avg':
-                distribution = distribution_cls.from_ev(ev=t.c_lo)
-                t.c_lo = math.ceil(distribution.percentile(p=c_lo_percent))
-                if t.c_lo > t.deadline:
-                    break
-
-            cutoff = c_hi_percent if t.criticality == 'HI' else c_lo_percent
-            t.c_pdf = distribution.discrete_pd(cutoff=cutoff)
-        else:
-            return ts
-
-
-def dummy_taskset():
-    """Returns a small dummy task set with only two tasks. These can be used for testing."""
-    t1 = Task(task_id=0, criticality='HI', period=4, deadline=4, c_lo=1, c_hi=2, phase=0)
-    t2 = Task(task_id=1, criticality='LO', period=6, deadline=6, c_lo=4, phase=0)
-    t1.c_pdf = np.array([0.0, 0.5, 0.5])
-    t2.c_pdf = np.array([0.0, 0.0, 0.2, 0.3, 0.5])
-    ts = TaskSet(0, [t1, t2])
-    ts.set_priorities_rm()
-    return ts
+    for t in task_set.tasks:
+        if mode == 'max':
+            if t.c_lo == 0:
+                print(t.period, t.criticality, t.c_lo, t.c_hi, t.deadline)
+            distribution = distribution_cls.from_percentile(
+                x_lo=t.c_lo, p_lo=c_lo_percent, x_hi=t.c_hi, p_hi=c_hi_percent)
+        elif mode == 'avg':  # TODO Remove / Rework
+            distribution = distribution_cls.from_ev(ev=t.c_lo, x_hi=t.c_hi, p_hi=c_hi_percent)
+            t.c_lo = math.ceil(distribution.percentile(p=c_lo_percent))
+            t.c_hi = math.ceil(distribution.percentile(p=c_hi_percent))
+        cutoff = c_hi_percent if t.criticality == 'HI' else c_lo_percent
+        t.c_pmf = distribution.discrete_pmf(cutoff=cutoff)
 
 
 if __name__ == '__main__':
-    ts = dummy_taskset()
-
-
+    pass
 
 
 """
@@ -342,4 +458,6 @@ Literature:
     Evaluation of Mixed-Criticality Scheduling Algorithms using a Fair Taskset Generator
 [3] Bini, Buttazzo
     Measuring the Performance of Schedulability Tests
+[4] Maxim, Davis, Cucu-Grosjean, Easwaran
+    Probabilistic Analysis for Mixed Criticality Scheduling with SMC and AMC
 """
