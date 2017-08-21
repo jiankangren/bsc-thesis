@@ -58,8 +58,6 @@ class Task(object):
         self.c_pmf = None
         self.phase = phase
         self.static_prio = static_prio
-        # self.avg_response = None
-        # self.dmp = None
 
     @property
     def u_lo(self):
@@ -77,21 +75,46 @@ class Task(object):
         if self.c_pmf is not None:
             return np.average(a=range(self.c_pmf.size), weights=self.c_pmf) / self.period
 
-    def plot_c_pmf(self, scale='linear', show=False):
+    @property
+    def description(self):
+        return ('Task: {0}, {1}, T: {2}, C(LO/HI): {3}/{4}, D: {5}'
+                .format(self.task_id, self.criticality, self.period, round(self.c_lo), self.c_hi, self.deadline))
+
+    def draw(self, scale='linear', labels=False, path=None):
         """Simple method to display a plot of the task's execution time probability mass function.
         
         c_lo and c_hi values are displayed as orange and red dotted lines, respectively.
         
         Args:
             scale: Either 'linear' or 'log'.
-            show: Show plot immediately if true. 
+            labels: Shows number values over each bar.
+            path: Path for saving figure. If None, the figure will be displayed immediately instead.
         """
-        plt.bar(range(len(self.c_pmf)), self.c_pmf)
-        plt.axvline(self.c_lo, color="orange", linestyle="--")
-        plt.axvline(self.c_hi, color="red", linestyle="--")
-        plt.yscale(scale)
-        if show:
+        fig, ax = plt.subplots(figsize=(5, 4), dpi=300)
+        bars = ax.bar(range(len(self.c_pmf)), self.c_pmf)
+        ax.axvline(self.c_lo, color="orange", linestyle="--", linewidth=1)
+        ax.text(self.c_lo*1.01, 0.8, "C(LO)", color='orange', verticalalignment='bottom', rotation='vertical')
+        if self.criticality == 'HI':
+            ax.axvline(self.c_hi, color="red", linestyle="--", linewidth=1)
+            ax.text(self.c_hi * 1.01, 0.8, "C(HI)", color='red', verticalalignment='bottom',
+                    rotation='vertical')
+        if scale == 'linear':
+            ax.set_ylim(0, 1.05)
+        ax.set_yscale(scale)
+        ax.set_xlabel('Execution Time')
+        ax.set_ylabel('Probability')
+        ax.set_title(self.description)
+        if labels:
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width() / 2., 1.0 * height,
+                        '%g' % height,
+                        fontsize=11,
+                        ha='center', va='bottom')
+        if path is None:
             plt.show()
+        else:
+            plt.savefig(path)
 
     def c_max(self):
         """Returns the task's maximum execution time."""
@@ -183,22 +206,23 @@ class TaskSet(object):
          scale: Either 'linear' or 'log'.
          path: Path to save figure to image file. If None, plot will be shown immediately instead.
         """
-        fig = plt.figure(figsize=(10, 10), dpi=180)
-        for i in range(len(self.tasks)):
-            # print(i)
-            plt.subplot(math.ceil(len(self.tasks) / 2), 2, i+1)
-            t = self.tasks[i]
-            plt.title('Task: {0}, {1}, Period: {2}, C(LO/HI): {3}/{4}'
-                      .format(t.task_id, t.criticality, t.period, t.c_lo, t.c_hi))
-            plt.bar(range(len(t.c_pmf)), t.c_pmf)
-            plt.axvline(t.c_lo, color='orange', linestyle='--')
-            if t.criticality == 'HI':
-                plt.axvline(t.c_hi, color='red', linestyle='--')
-            plt.axvline(t.deadline, color='black', linestyle='--')
-            plt.yscale(scale)
+        fig = plt.figure(figsize=(8, 8), dpi=300)
 
+        for i, task in enumerate(self.tasks):
+            ax = plt.subplot(math.ceil(len(self.tasks) / 2), 2, i+1)
+            ax.set_title(task.description, fontsize=10)
+            ax.bar(range(len(task.c_pmf)), task.c_pmf)
+            ax.axvline(task.c_lo, color='orange', linestyle='--')
+            y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
+            ax.text(task.c_lo, -0.02*y_range, "C(LO)",
+                    color='orange', horizontalalignment='center', verticalalignment='top', fontsize=6)
+            if task.criticality == 'HI':
+                ax.axvline(task.c_hi, color='red', linestyle='--')
+                ax.text(task.c_hi, -0.02 * y_range, "C(HI)",
+                        color='red', horizontalalignment='center', verticalalignment='top', fontsize=6)            # plt.axvline(task.deadline, color='black', linestyle='--')
+            ax.set_yscale(scale)
         plt.subplots_adjust(hspace=0.5)
-        fig.suptitle(self.description)
+        fig.suptitle(self.description, fontsize=12)
         if path is None:
             plt.show()
         else:
@@ -228,7 +252,7 @@ class Job(object):
 # Basic Operations #
 ####################
 
-def convolve_rescale_pmf(a, b, percentile=1 - 1e-14):
+def convolve_rescale_pmf(a, b, percentile=1 - 1e-14, rescale=True):
     """Convolution of two discrete probability mass functions."""
     # Convolve
     conv = sig.convolve(a, b)
@@ -242,18 +266,29 @@ def convolve_rescale_pmf(a, b, percentile=1 - 1e-14):
     conv = conv[:i]
 
     # Rescale
-    return conv / sum(conv)
+    if rescale:
+        conv /= sum(conv)
+
+    return conv
 
 
-def shrink(pdf, t):
+def shrink(pmf, t):
     """Shrinking of PMF c by t time units."""
 
-    if t >= len(pdf):
-        return np.array([sum(pdf)])
+    if t >= len(pmf):
+        return np.array([sum(pmf)])
     else:
-        result = pdf[t:]
-        result[0] += sum(pdf[:t])
+        result = pmf[t:]
+        result[0] += sum(pmf[:t])
         return result
+
+
+def split_convolve_merge(response_pmf, preempt_pmf, release):
+    """Split response_pmf at release, convolve tail with preempt_pmf, merge back together."""
+    head, tail = np.split(response_pmf, [release + 1])
+    if len(tail):
+        tail = convolve_rescale_pmf(tail, preempt_pmf, rescale=False)
+    return np.concatenate((head, tail))
 
 
 ####################################
@@ -266,40 +301,41 @@ class ExpExceedDist(object):
     
     Maxim et al. [1] introduced this method of generating synthetic probability distributions for tasks. The exceedance
     function 1 - CDF is assumed to be a straight line on a graph with probabilities on a log scale, i.e. of the form
-    1-CDF = a * exp(b * x). The parameters a and b are then found by extrapolating through the points (x_lo, 1 - p_lo)
-    and (x_hi, 1 - p_hi).
+    1-CDF = a * exp(b * x). The parameters a and b are then found by extrapolating through the points (c_lo, 1 - p_lo)
+    and (c_hi, 1 - p_hi).
     """
-    def __init__(self, a, b, x_min):
+    def __init__(self, a, b, c_min):
         self.a = a
         self.b = b
-        self.x_min = x_min
+        self.c_min = c_min
 
     @classmethod
-    def from_percentile(cls, x_lo, p_lo, x_hi, p_hi):
+    def from_percentile(cls, c_lo, p_lo, c_hi, p_hi):
         """Constructor method for a given fixed percentile.
 
         Args:
-            x_lo, x_hi: Points of the p-th percentiles.
+            c_lo, c_hi: Points of the p-th percentiles.
             p_lo, p_hi: Desired percentile, in interval (0, 1).
 
         Returns:
             A distribution object that can be used to model a task's execution time distribution.
         """
-        if x_hi is None:
-            x_hi = x_lo * 1.5
-        ex1, ex2 = 1. - p_lo, 1. - p_hi  # Exceedance probabilities
-        b = (math.log(ex2) - math.log(ex1)) / (x_hi - x_lo)
-        a = ex1 / (math.exp(b * x_lo))
-        x_min = - math.log(a) / b
-        return cls(a=a, b=b, x_min=x_min)
+        cp = 1.5  # Criticality factor parameter
+        if c_hi is None:
+            c_hi = c_lo * cp
+        ex_lo, ex_hi = 1. - p_lo, 1. - p_hi  # Exceedance probabilities
+        b = (math.log(ex_hi) - math.log(ex_lo)) / (c_hi - c_lo)
+        a = ex_lo / (math.exp(b * c_lo))
+        c_min = - math.log(a) / b
+        return cls(a, b, c_min)
 
     def pdf(self, x):
         """Exact probability density function."""
-        return -self.a * self.b * math.exp(self.b * x) if x >= self.x_min else 0
+        return -self.a * self.b * math.exp(self.b * x) if x >= self.c_min else 0
 
     def cdf(self, x: float):
         """Exact cumulative distribution function."""
-        return 1 - self.a * math.exp(self.b * x) if x >= self.x_min else 0
+        return 1 - self.a * math.exp(self.b * x) if x >= self.c_min else 0
 
     def percentile(self, p: float):
         """Exact percentile function."""
@@ -318,11 +354,11 @@ class ExpExceedDist(object):
 
             stands for a discrete distribution with P[x=0] = 0.0, P[x=1] = 0.6, P[x=2] = 0.4.
         """
-        x_min = self.x_min
-        x_max = int(math.ceil(self.percentile(cutoff)))
-        probabilities = np.zeros(x_max + 1)
+        c_min = self.c_min
+        c_max = int(math.floor(self.percentile(cutoff)))
+        probabilities = np.zeros(c_max + 1)
         last = 0.0
-        for x in range(int(math.ceil(x_min)), x_max + 1):
+        for x in range(int(math.ceil(c_min)), c_max + 1):
             curr = self.cdf(x)
             probabilities[x] = curr - last
             last = curr
@@ -354,23 +390,6 @@ class WeibullDist(object):
         """
         k = nprd.uniform(1.5, 3)
         beta = x_lo / (-math.log(1 - p_lo)) ** (1. / k)
-        return cls(k=k, beta=beta)
-
-    @classmethod
-    def from_ev(cls, ev, x_hi, p_hi):
-        """Constructor method for a given fixed expected value.
-        
-        Args:
-            ev: Desired expected value of the distribution.
-            x_hi: Point of p_hi-th percentile.
-            p_hi: p_hi-th percentile.
-            
-        Returns:
-            A distribution object that can be used to model a task's execution time distribution.
-            The distribution's expected value is ev.
-        """
-        k = nprd.uniform(1.5, 3)
-        beta = ev / math.gamma(1. + (1. / k))
         return cls(k=k, beta=beta)
 
     def pdf(self, x):
@@ -407,13 +426,85 @@ class WeibullDist(object):
             curr = self.cdf(x)
             probabilities[x] = curr - last
             last = curr
-        if sum(probabilities) == 0:  # TODO
-            print(self.k, self.beta, cutoff, c_max, probabilities)
         factor = 1. / sum(probabilities)
         return probabilities * factor
 
 if __name__ == '__main__':
-    pass
+    # Plot examples for stochastic MC-tasks
+    ex_task_lo = Task(task_id=0, criticality='LO', period=8, deadline=7, c_lo=4)
+    ex_task_lo.c_pmf = [0.0, 0.25, 0.25, 0.25, 0.25]
+    ex_task_lo.draw(labels=True, path='./figures/ex_task_lo.png')
+    ex_task_hi = Task(task_id=1, criticality='HI', period=10, deadline=6, c_lo=3, c_hi=5)
+    ex_task_hi.c_pmf = [0.0, 0.2, 0.4, 0.3, 0.08, 0.02]
+    ex_task_hi.draw(labels=True, path='./figures/ex_task_hi.png')
+
+
+    def draw_pmf(pmf, xlim, ylim=(0, 1), figsize=(3, 3), barfont=11):
+        """Helper function for following plots."""
+        fig = plt.figure(figsize=figsize, dpi=180)
+        ax = plt.axes()
+        bars = ax.bar(range(len(pmf)), pmf)
+        ax.set_xlim(xlim)
+        ax.set_xticks(range(int(ax.get_xlim()[1])))
+        ax.set_ylim(ylim)
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2., height + 0.01,
+                     '%g' % height,
+                     fontsize=barfont,
+                     ha='center', va='bottom', rotation='vertical')
+        return fig
+
+    # Plot example for convolution and shrinking
+    ex_backlog = [0.0, 0.5, 0.5]
+    fig1 = draw_pmf(ex_backlog, (-0.5, 6))
+    plt.savefig('./figures/ex_backlog.png')
+
+    ex_job_pmf = [0.0, 0.2, 0.5, 0.3]
+    fig2 = draw_pmf(ex_job_pmf, (-0.5, 6))
+    plt.savefig('./figures/ex_job_pmf.png')
+
+    ex_convolve = convolve_rescale_pmf(ex_backlog, ex_job_pmf)
+    fig3 = draw_pmf(ex_convolve, (-0.5, 6))
+    plt.savefig('./figures/ex_convolve.png')
+    plt.axvline(3, color='black', linestyle='dashed', linewidth=1)
+    plt.savefig('./figures/ex_convolve_line.png')
+
+    ex_shrink = shrink(ex_convolve, 3)
+    fig4 = draw_pmf(ex_shrink, (-0.5, 6))
+    plt.axvline(0, color='black', linestyle='dashed', linewidth=1)
+    plt.savefig('./figures/ex_shrink.png')
+
+    # Plot example for split-convolve-merge
+    ex_job_response = np.array([0.0, 0.0, 0.2, 0.3, 0.3, 0.1, 0.1])  # t = 0
+    fig5_1a = draw_pmf(ex_job_response, (-0.5, 12), ylim=(0, 0.75), figsize=(3, 2), barfont=10)
+    plt.axvline(3, color='black', linestyle='dashed', linewidth=0.8)
+    plt.text(3, 0.76, r'$\lambda_k^\prime$', horizontalalignment='center', verticalalignment='bottom')
+    plt.savefig('./figures/ex_split_1a.png')
+
+    ex_job_response_head, ex_job_response_tail = ex_job_response[:3+1], ex_job_response[3+1:]
+    fig5_1b = draw_pmf(ex_job_response_head, (-0.5, 12), ylim=(0, 0.75), figsize=(3, 2), barfont=10)
+    plt.savefig('./figures/ex_split_1b.png')
+    plt.savefig('./figures/ex_split_3a.png')
+
+    fig5_1c = draw_pmf(np.concatenate((np.zeros(4), ex_job_response_tail)),
+                       (-0.5, 12), ylim=(0, 0.75), figsize=(3, 2), barfont=10)
+    plt.savefig('./figures/ex_split_1c.png')
+    plt.savefig('./figures/ex_split_2a.png')
+
+    ex_job_preempt = np.array([0.0, 0.0, 0.0, 0.0, 0.6, 0.4])  # Release at t = 3
+    fig5_2b = draw_pmf(ex_job_preempt, (-0.5, 12), ylim=(0, 0.75), figsize=(3, 2), barfont=10)
+    plt.savefig('./figures/ex_split_2b.png')
+
+    ex_tail_convolve = convolve_rescale_pmf(ex_job_response_tail, ex_job_preempt, rescale=False)
+    fig5_2b = draw_pmf(np.concatenate((np.zeros(4), ex_tail_convolve)),
+                       (-0.5, 12), ylim=(0, 0.75), figsize=(3, 2), barfont=10)
+    plt.savefig('./figures/ex_split_2c.png')
+    plt.savefig('./figures/ex_split_3b.png')
+
+    ex_job_response_merge = np.concatenate((ex_job_response_head, ex_tail_convolve))
+    fig5_3c = draw_pmf(ex_job_response_merge, (-0.5, 12), ylim=(0, 0.75), figsize=(3, 2), barfont=10)
+    plt.savefig('./figures/ex_split_3c.png')
 
 """
 Literature:

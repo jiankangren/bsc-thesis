@@ -6,14 +6,21 @@ import matplotlib.pyplot as plt
 from analysis import convolve_rescale_pmf
 
 
-def uniform_dist(a, b):
-    """"""
-    return np.concatenate((np.zeros(a), np.full(b - a + 1, 1. / (b - a + 1))))
-
-
 def transient_system(harvest_dist, burst, c_job, p_job):
-    """
-     
+    """Response time analysis for a transient system executing a single job.
+    
+    A transient system collects a random amount of energy per time unit and releases it in a burst after a
+    certain threshold is exceeded. This method will plot the distribution of harvested energy, the distribution
+    of burst inter-arrival time, and the resulting response time distribution for the executed job.
+    
+    Burst size is assumed to be orders of magnitude smaller than job power dissipation, i.e. job response time
+    mainly depends on energy consumption.
+    
+    Args:
+        harvest_dist: Array describing the probability mass function for energy collected per time unit.
+        burst: Capacity of the energy buffer and thus also size of released energy bursts.
+        c_job: Deterministic job execution time.
+        p_job: Deterministic job power dissipation per time unit.    
     """
     Job = col.namedtuple('Job', ('c', 'p', 'cp'))  # execution time, power dissipation
     job = Job(c_job, p_job, c_job * p_job)
@@ -22,7 +29,7 @@ def transient_system(harvest_dist, burst, c_job, p_job):
 
     def burst_time_cdf(y):
         result = np.array([1.])
-        for i in range(y):
+        for _ in range(y):
             result = convolve_rescale_pmf(result, harvest_dist)
         return np.sum(result[burst:])
 
@@ -45,33 +52,32 @@ def transient_system(harvest_dist, burst, c_job, p_job):
         return result
 
     response = response_time()
-    # response = []
-    # psum = 0.
-    # y = 0
-    # while psum < 1. - epsilon:
-    #     response.append(response_time(y))
-    #     psum += response[-1]
-    #     y += 1
 
-    print(harvest_dist)
-    print(burst_time)
-    print(response)
-
-    fig = plt.figure(figsize=(20, 10), dpi=200)
+    fig = plt.figure(figsize=(4, 6), dpi=200)
 
     plt.subplot(311)
     plt.title("Energy harvest distribution")
     plt.bar(range(len(harvest_dist)), harvest_dist)
 
     plt.subplot(312)
-    plt.title("Burst inter-arrival time distribution, burst size = %d" % burst)
+    plt.title("Burst inter-arrival time PMF, B = %d" % burst)
     plt.bar(range(len(burst_time)), burst_time)
 
     plt.subplot(313)
-    plt.title("Response time distribution for Job: Cj = %d, Pj = %d" % (job.c, job.p))
-    plt.bar(range(len(response)), response)
+    plt.title("Response time PMF for Job: C = %d, P = %d" % (job.c, job.p))
+    plt.plot(range(len(response)), response)
 
-    plt.subplots_adjust(hspace=0.5)
+    plt.tight_layout()
+    plt.savefig('./figures/energy.png')
     plt.show()
 
-transient_system(uniform_dist(2, 5), 5, 30, 3)
+
+if __name__ == '__main__':
+    def uniform_dist(a, b):
+        return np.concatenate((np.zeros(a), np.full(b - a + 1, 1. / (b - a + 1))))
+
+    transient_system(harvest_dist=uniform_dist(2, 5), burst=5, c_job=5, p_job=300)
+    transient_system(harvest_dist=uniform_dist(2, 5), burst=50, c_job=5, p_job=300)
+    transient_system(harvest_dist=uniform_dist(2, 40), burst=50, c_job=5, p_job=300)
+    transient_system(harvest_dist=uniform_dist(15, 27), burst=50, c_job=5, p_job=300)
+

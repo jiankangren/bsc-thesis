@@ -1,6 +1,6 @@
 """
 This module contains any methods and functions related to the analysis of a task set's schedulability, deadline miss
-probability and so forth. It makes use of the classes defined in module class_lib.
+probability, etc. It makes use of the classes defined in module class_lib.
 
 -- Luca Stalder, 2017
 """
@@ -8,16 +8,19 @@ probability and so forth. It makes use of the classes defined in module class_li
 import copy
 import itertools
 import math
-import time
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.signal as sig
 
-import generation as gen
-# import sympy as sp
-from lib import TaskSet, WeibullDist, convolve_rescale_pmf, shrink
+import synthesis as synth
+from lib import Task, TaskSet, ExpExceedDist, WeibullDist, \
+    convolve_rescale_pmf, shrink, split_convolve_merge
 
+
+################################
+# Response Time Analysis Tools #
+################################
 
 class BacklogSim(object):
     """Backlog simulation object.
@@ -128,7 +131,7 @@ def stationary_backlog_iter(task_set: TaskSet, p_level=0, max_iter=100, epsilon=
         return None, None
 
     if any([t.static_prio is None for t in task_set.tasks]):
-        gen.set_priorities_dm(task_set)
+        synth.set_fixed_priorities(task_set)
 
     sim = BacklogSim(task_set=task_set, p_level=p_level)
     last = sim.backlog
@@ -145,66 +148,6 @@ def stationary_backlog_iter(task_set: TaskSet, p_level=0, max_iter=100, epsilon=
         iters = i
 
     return last, iters
-
-
-# def stationary_backlog_analytic(task_set: TaskSet, p_level=0):  # TODO REMOVE
-#     """Exact solution for finding a task set's stationary backlog.
-#
-#     This method finds the stationary backlog at the beginning of a task set's hyperperiod by exact calculation, which
-#     involves finding its Markov chain matrix. For further details refer to [4].
-#
-#     Args:
-#         task_set: The task set in consideration.
-#         p_level: The desired priority level of the resulting backlog. Only tasks with priority of at least p_level are
-#             taken into consideration.
-#
-#     Returns:
-#         An array representing the probability distribution over the task set's stationary backlog at the beginning of
-#         its hyperperiod.
-#     """
-#     w_min = 0  # Backlog after first hyperperiod assuming all jobs require minimal execution time.
-#     timeline = task_set.job_releases
-#     t = 0
-#     while timeline:
-#         next_job = timeline.pop(0)
-#         w_min = max(w_min - (next_job.t - t), 0)  # 'Shrink'
-#         w_min += next_job.task.c_min()  # 'Convolve'
-#         t = next_job.t
-#     w_min = max(w_min - (task_set.hyperperiod - t), 0)
-#
-#     r = task_set.hyperperiod + w_min - sum([task.c_min() * len(task.rel_times) for task in task_set.tasks
-#                                             if task.priority >= p_level])  # max idle time in any hyperperiod
-#     sim = BacklogSim(task_set, p_level, initial_backlog=np.array([0.0] * r + [1.0]))
-#     sim.step(dt=task_set.hyperperiod, mode='before')
-#     m_r = len(sim.backlog) - 1  # max possible backlog for initial backlog r
-#
-#     first_backlogs = []
-#     print(r, m_r)
-#     for i in range(r + 1):  # TODO Add multi-threading
-#         sim.__init__(task_set, p_level, initial_backlog=np.array([0.0] * i + [1.0]))
-#         sim.step(task_set.hyperperiod, mode='before')
-#         first_backlogs.append(np.concatenate((sim.backlog, np.zeros(m_r - len(sim.backlog) + 1))))
-#         print(i)
-#
-#     for i in range(1, m_r + 1):
-#         first_backlogs.append(np.array([0.0] * i + first_backlogs[r][:-i].tolist()))
-#     p_upper_left = np.array(first_backlogs).T  # (m_r + 1) x (r + 1) matrix in the upper left corner of P
-#     p_upper_left -= np.eye(p_upper_left.shape[0], p_upper_left.shape[1])  # Equate everything to zero
-#
-#     print(p_upper_left.shape)
-#
-#     unknowns = sp.symbols('p0:%d' % (m_r + r + 1))  # Tuple of unknowns
-#     equations = p_upper_left.dot(unknowns)  # First subset of (m_r + 1) equations  # TODO Too slow
-#
-#     print(type(equations), equations.shape)
-#
-#     a_matrix = np.zeros((m_r, m_r))
-#     a_matrix[:-1, 1:] = np.eye(m_r - 1)
-#     a_matrix[-1, :] = (p_upper_left[-1:0:-1, r] / -p_upper_left[0, r]).T
-#
-#     D, V = np.linalg.eig(a_matrix)
-#     print(D, D.shape)
-#     print(V, V.shape)
 
 
 def rta_fp(task_set: TaskSet):
@@ -231,8 +174,12 @@ def rta_fp(task_set: TaskSet):
                 return
     # Job Response Time Analysis
     for job in task_set.jobs:
+
+        # Step up to job release; yielding job-level backlog
         sim = sims[job.task.static_prio]
         sim.step(job.release - sim.t, mode='before')
+
+        # Split-convolve-merge
         part_response = convolve_rescale_pmf(sim.backlog, job.task.c_pmf)
         preempts = [preempt for preempt in task_set.jobs
                     if job.release <= preempt.release
@@ -240,28 +187,24 @@ def rta_fp(task_set: TaskSet):
                     and preempt.release < job.release + job.task.deadline]
         while preempts:
             next_preempt = preempts.pop(0)
-            head, tail, _ = np.split(part_response,
-                                     [next_preempt.release - job.release + 1, job.task.deadline + 1])
-            tail_lim = job.task.deadline - head.size + 1
-            if tail.size:
-                tail = sig.convolve(tail, next_preempt.task.c_pmf[:tail_lim])[:tail_lim]
-            part_response = np.concatenate((head, tail))
-        part_response.resize(job.task.deadline + 1)
-        job.response = part_response
+            part_response = split_convolve_merge(
+                part_response, next_preempt.task.c_pmf, next_preempt.release)
+            # head, tail, _ = np.split(part_response,
+            #                          [next_preempt.release - job.release + 1, job.task.deadline + 1])
+            # tail_lim = job.task.deadline - head.size + 1
+            # if tail.size:
+            #     tail = sig.convolve(tail, next_preempt.task.c_pmf[:tail_lim])[:tail_lim]
+            # part_response = np.concatenate((head, tail))
 
-    # TODO Remove
-    # for task in task_set.tasks:
-    #     task_responses = [j.response for j in task_set.jobs if j.task == task]
-    #     task.avg_response = np.sum(task_responses, axis=0) / len(task_responses)
-    #     task.dmp = 1. - np.sum(task.avg_response)
+        part_response = part_response[:job.task.deadline + 1]
+        job.response = part_response
 
 
 def plot_backlogs(task_set, p_level=0, idx=None, add_stationary=False, scale='log', path=None):
-    """Plots the first n_subplots backlogs of task_set, considering only tasks of at least p_level priority."""
-    print(task_set.description)
+    """Plots backlog distributions of task_set, considering only tasks of at least p_level priority."""
     if idx is None:
-        idx = [1, 2, 5, 10, 50, 100]
-    fig = plt.figure(figsize=(5, 10), dpi=180)
+        idx = [1, 2, 5, 10, 50, 100]  # A plot is drawn for the end of each of these hyperperiods
+    fig = plt.figure(figsize=(3, 10), dpi=180)
     sim = BacklogSim(task_set, p_level)
     if add_stationary:
         stationary, iters = stationary_backlog_iter(task_set)
@@ -274,21 +217,25 @@ def plot_backlogs(task_set, p_level=0, idx=None, add_stationary=False, scale='lo
     for i, k in enumerate(idx):
         print(k, k - sim.k)
         sim.step(task_set.hyperperiod * (k - sim.k))
-        plt.subplot(len(idx) + 1, 1, i + 1)
+        ax = plt.subplot(len(idx) + 1, 1, i + 1)
         plt.bar(range(len(sim.backlog)), sim.backlog)
         plt.xlim(-1, xlim + 1)
-        plt.ylim(1e-15, 10)
+        if scale == 'log':
+            plt.ylim(1e-15, 10)
         plt.yscale(scale)
+        ax.set_yticks([])
         plt.title("Hyperperiods: %d" % sim.k)
     if add_stationary:
-        plt.subplot(len(idx) + 1, 1, len(idx) + 1)
+        ax = plt.subplot(len(idx) + 1, 1, len(idx) + 1)
         plt.bar(range(len(stationary)), stationary)
         plt.xlim(-1, xlim + 1)
-        plt.ylim(1e-15, 10)
+        if scale == 'log':
+            plt.ylim(1e-15, 10)
         plt.yscale(scale)
+        ax.set_yticks([])
         plt.title("Stationary backlog")
     plt.subplots_adjust(hspace=0.8)
-    fig.suptitle(task_set.description)
+    # fig.suptitle(task_set.description, fontsize=10)
     if path is None:
         plt.show()
     else:
@@ -390,28 +337,21 @@ def d_amc(task_set):
 def d_edf_vd(task_set: TaskSet):
     """Deterministic EDF-VD schedulability analysis. Calculated according to theorem 1 in [3]."""
 
-    def total_k_utilization(task_subset, k):
-        """Total utilization at scenario criticality level k of tasks contained in task_subset."""
-        result = 0.0
-        for j in task_subset:
-            c = j.c_hi if k == 'HI' else j.c_lo
-            result += float(c) / float(j.period)
-        return result
+    u_hi_hi = task_set.u_hi
+    if u_hi_hi >= 1:
+        return False
 
-    subset_lo = [t for t in task_set.tasks if t.criticality == 'LO']
-    subset_hi = [t for t in task_set.tasks if t.criticality == 'HI']
-    u_1_1 = total_k_utilization(subset_lo, 'LO')
-    u_2_1 = total_k_utilization(subset_hi, 'LO')
-    u_2_2 = total_k_utilization(subset_hi, 'HI')
+    u_lo_lo = sum([task.u_lo for task in task_set.tasks if task.criticality == 'LO'])
+    u_hi_lo = sum([task.u_lo for task in task_set.tasks if task.criticality == 'HI'])
 
-    return u_1_1 + min(u_2_2, u_2_1 / (1 - u_2_2)) <= 1     # Note that this condition is sufficient for schedulability.
+    return u_lo_lo + min(u_hi_hi, u_hi_lo / (1 - u_hi_hi)) <= 1  # sufficient condition
 
 
 #########################################
 # Probabilistic Schedulability Analysis #
 #########################################
 
-def p_smc(task_set: TaskSet, thresh_lo: float=1e-5, thresh_hi: float=1e-9):
+def p_smc(task_set: TaskSet, thresh_lo: float=1e-4, thresh_hi: float=1e-9):
     """Probabilistic static mixed criticality schedulability analysis.
     
     This method decides whether a set of probabilistic tasks can be considered schedulable or not. The analysis is based
@@ -440,7 +380,8 @@ def p_smc(task_set: TaskSet, thresh_lo: float=1e-5, thresh_hi: float=1e-9):
 
 def p_amc_bb(task_set: TaskSet,
              hi_mode_duration=1,
-             thresh_lo=1e-5, thresh_hi=1e-9,
+             ignore_hi_mode=False,
+             thresh_lo=1e-4, thresh_hi=1e-9,
              ):
     """Probabilistic adaptive mixed criticality schedulability analysis.
     
@@ -456,6 +397,8 @@ def p_amc_bb(task_set: TaskSet,
     Args:
         task_set: Mixed-Criticality task set with probabilistic task execution times and fixed priority scheduling.
         hi_mode_duration: Theoretical duration of HI-mode after a mode switch occurred.
+        ignore_hi_mode: If True, LO-task DMP is also assumed to be 0% in HI-mode, leading to an alternative, more 
+        generous analysis scheme.
         thresh_lo: LO-critical tasks have their DMP compared against this float to determine schedulability.
         thresh_hi: HI-critical tasks have their DMP compared against this float to determine schedulability.
     """
@@ -474,15 +417,19 @@ def p_amc_bb(task_set: TaskSet,
             task.c_pmf = task.c_pmf[:task.c_lo + 1] / np.sum(task.c_pmf[:task.c_lo + 1])
     rta_fp(task_set_adj)
 
-    expected_switch_time = 1. / p_switch  # Expected number of hyperperiods until mode switch
-    total_time = expected_switch_time + hi_mode_duration
+    if p_switch == 0:
+        expected_switch_time = 1
+        total_time = 1
+    else:
+        expected_switch_time = 1. / p_switch  # Expected number of hyperperiods until mode switch
+        total_time = expected_switch_time + hi_mode_duration
     for task in task_set_adj.tasks:
         if task.criticality == 'HI':
             thresh = thresh_hi
             p_failure_hi = 0.
         else:
             thresh = thresh_lo
-            p_failure_hi = 1.
+            p_failure_hi = 1. if not ignore_hi_mode else 0.
         p_failure_lo = 1. - np.prod([1. - job.dmp for job in task_set_adj.jobs if job.task == task])
         if (expected_switch_time / total_time) * p_failure_lo + (hi_mode_duration / total_time) * p_failure_hi > thresh:
             return False
@@ -493,11 +440,20 @@ def p_amc_bb(task_set: TaskSet,
 # Monte Carlo Schemes #
 #######################
 
-def p_smc_monte_carlo(task_set, nhyperperiods=10000, thresh_lo=1e-6, thresh_hi=1e-9):
+def p_smc_monte_carlo(task_set, nhyperperiods=10000, thresh_lo=1e-3, thresh_hi=1e-4):
+    """Monte Carlo Simulation for pSMC.
+    
+    Decides on schedulability by just simulating the system for a large number of hyperperiods. Execution times for
+    jobs are drawn independently from their task's PMF, and all deadline misses are counted for each task.
 
-    start_total = time.time()
-    elapsed = 0
-
+    Args:
+        task_set: Mixed-Criticality task set with probabilistic task execution times and fixed priority scheduling.
+        nhyperperiods: Sample set size for the simulation. Determines the resolution of the result; DMP probabilites 
+            for thresholds smaller than 1 / nhyperperiods can not be registered in a reliable way (DMP is either 0 or
+            at least 1 / nhyperperiods.
+        thresh_lo: LO-critical tasks have their DMP compared against this float to determine schedulability.
+        thresh_hi: HI-critical tasks have their DMP compared against this float to determine schedulability.
+    """
     class JobInstance(object):
         def __init__(self, task, release, remaining):
             self.task = task
@@ -506,32 +462,10 @@ def p_smc_monte_carlo(task_set, nhyperperiods=10000, thresh_lo=1e-6, thresh_hi=1
             self.abs_deadline = (release[0] + (release[1] + self.task.deadline) // task_set.hyperperiod,
                                  (release[1] + self.task.deadline) % task_set.hyperperiod)
 
-    def exec_backlog(dt):
-        """
-        
-        
-        dt will never exceed the time to the next release or the end of the hyperperiod.  
-        """
-        nonlocal t
-        while dt > 0:
-            if not backlog:
-                t += dt
-                break
-            elif backlog[0].remaining > dt:
-                t += dt
-                backlog[0].remaining -= dt
-                break
-            else:
-                done = backlog.pop(0)
-                t += done.remaining
-                dt -= done.remaining
-                if done.abs_deadline < (i, t):
-                    done.task.failed_hps.add(done.release[0])
-
-    ###
-    class CustomContainer(object):
+    class BacklogContainer(object):
+        """Optimized for backlog push and pop."""
         def __init__(self):
-            self.items = [[] for i in range(len(task_set.tasks))]
+            self.items = [[] for _ in range(len(task_set.tasks))]
             self.size = 0
 
         def __bool__(self):
@@ -556,99 +490,231 @@ def p_smc_monte_carlo(task_set, nhyperperiods=10000, thresh_lo=1e-6, thresh_hi=1
         @property
         def as_list(self):
             return list(itertools.chain.from_iterable(self.items[::-1]))
-    ###
 
-    # backlog = socon.SortedListWithKey([], key=lambda rel: (-rel.task.static_prio, rel.release))  # ~42%
-    backlog = CustomContainer()  # ~35%
+    def exec_backlog(dt):
+        nonlocal t, backlog
+        while dt > 0:  # dt will never exceed the time to the next release or the end of the hyperperiod
+            if not backlog:
+                t += dt
+                break
+            elif backlog[0].remaining > dt:
+                t += dt
+                backlog[0].remaining -= dt
+                break
+            else:
+                done = backlog.pop(0)
+                t += done.remaining
+                dt -= done.remaining
+                if done.abs_deadline < (i, t):
+                    done.task.failed_hps.add(done.release[0])
+                    if len(done.task.failed_hps) > max_failures[done.task.criticality]:
+                        return False  # max allowed failed hyperperiods exceeded
+        return True
+
+    max_failures = {'LO': int(thresh_lo * nhyperperiods), 'HI': int(thresh_hi * nhyperperiods)}
+    backlog = BacklogContainer()
+
     for task in task_set.tasks:
-        task.exec_times = np.random.choice(a=range(len(task.c_pdf)),
+        task.exec_times = np.random.choice(a=range(len(task.c_pmf)),
                                            size=nhyperperiods * (task_set.hyperperiod // task.period),
-                                           p=task.c_pdf)
+                                           p=task.c_pmf)
         task.failed_hps = set()  # All hyperperiods where an instance of this task missed its deadline
     for i in range(nhyperperiods):
-        # print(i)
         # Reset timer, build list of all releases in new hyperperiod
         t = 0
         releases = list(task_set.jobs)
 
         while releases:
             next_rel = releases.pop(0)
-            exec_backlog(next_rel.release - t)
+            success = exec_backlog(next_rel.release - t)
+            if not success:
+                return False
             exec_time, next_rel.task.exec_times = next_rel.task.exec_times[-1], next_rel.task.exec_times[:-1]
-            start = time.time()
             backlog.add(JobInstance(task=next_rel.task, release=(i, next_rel.release), remaining=exec_time))
-            stop = time.time()
-            elapsed += stop - start
         else:
-            exec_backlog(task_set.hyperperiod - t)
-    stop_total = time.time()
-    # print("Elapsed here:", elapsed)
-    # print("Elapsed total:", stop_total - start_total)
-    # print(100 * elapsed / (stop_total - start_total), "%")
-
-    for task in task_set.tasks:
-        p_fail = len(task.failed_hps) / nhyperperiods
-        thresh = thresh_hi if task.criticality == 'HI' else thresh_lo
-        if p_fail > thresh:
-            return False
+            success = exec_backlog(task_set.hyperperiod - t)
+            if not success:
+                return False
     return True
 
 
+def p_amc_bb_monte_carlo(task_set, hi_mode_duration=1, nhyperperiods=10000, thresh_lo=1e-3, thresh_hi=1e-4):
+    """Monte Carlo Simulation for pAMC-BB.
+    
+    Decides on schedulability by just simulating the system for a large number of hyperperiods. Execution times for
+    jobs are drawn independently from their task's PMF, and all deadline misses are counted for each task. Mode switches
+    are also simulated; every time a switch happens, the simulation fast-forwards for hi_mode_duration and LO-critical 
+    tasks get hi_mode_duration deadline misses added to their counter.
 
+    Args:
+        task_set: Mixed-Criticality task set with probabilistic task execution times and fixed priority scheduling.
+        hi_mode_duration: Number of hyperperiods the "black-box" takes after a mode switch occurred. Only whole
+            hyperperiods possible (integer values)! 
+        nhyperperiods: Sample set size for the simulation. Determines the resolution of the result; DMP probabilites 
+            for thresholds smaller than 1 / nhyperperiods can not be registered in a reliable way (DMP is either 0 or
+            at least 1 / nhyperperiods.
+        thresh_lo: LO-critical tasks have their DMP compared against this float to determine schedulability.
+        thresh_hi: HI-critical tasks have their DMP compared against this float to determine schedulability.
+    """
 
+    class JobInstance(object):
+        def __init__(self, task, release, remaining):
+            self.task = task
+            self.release = release  # Tuple (hyperperiod of release, release time)
+            self.remaining = remaining
+            self.abs_deadline = (release[0] + (release[1] + self.task.deadline) // task_set.hyperperiod,
+                                 (release[1] + self.task.deadline) % task_set.hyperperiod)
+            self.c_lo_budget = task.c_lo
 
+    class BacklogContainer(object):
+        """Optimized for backlog push and pop."""
 
+        def __init__(self):
+            self.reset()
 
+        def __bool__(self):
+            return self.size > 0
 
-# def total_variation_distance(p: np.ndarray, q: np.ndarray):
-#     """Total variation distance between arrays p and q."""
-#     if len(p) <= len(q):
-#         a = np.array(p)
-#         b = np.array(q)
-#     else:
-#         a = np.array(q)
-#         b = np.array(p)
-#     a.resize(len(b))
-#     return max([abs(x - y) for x, y in zip(a, b)])
+        def __iter__(self):
+            return self.as_list.__iter__()
+
+        def __getitem__(self, item):
+            return self.as_list.__getitem__(item)
+
+        def add(self, new):
+            self.items[new.task.static_prio].append(new)
+            self.size += 1
+
+        def pop(self, k):
+            for a in self.items[::-1]:
+                if a:
+                    self.size -= 1
+                    return a.pop(k)
+
+        def reset(self):
+            self.items = [[] for _ in range(len(task_set.tasks))]
+            self.size = 0
+
+        @property
+        def as_list(self):
+            return list(itertools.chain.from_iterable(self.items[::-1]))
+
+    def exec_backlog(dt):
+        nonlocal t, backlog
+        while dt > 0:  # dt will never exceed the time to the next release or the end of the hyperperiod
+            if not backlog:
+                t += dt
+                break
+            elif backlog[0].remaining > dt and backlog[0].c_lo_budget > dt:  # job not done yet, no budget overrun
+                t += dt
+                backlog[0].remaining -= dt
+                backlog[0].c_lo_budget -= dt
+                break
+            elif backlog[0].remaining > dt >= backlog[0].c_lo_budget:  # job not done yet, switch to HI-mode
+                t += backlog[0].c_lo_budget
+                return -1
+            else:  # backlog[0].remaining <= dt --> job complete
+                done = backlog.pop(0)
+                if done.remaining > done.c_lo_budget:  # budget overrun, switch to HI-mode
+                    t += done.c_lo_budget
+                    return -1
+                t += done.remaining
+                dt -= done.remaining
+                if done.abs_deadline < (i, t):  # i denotes the i-th hyperperiod
+                    done.task.failed_hps.add(done.release[0])
+                    if len(done.task.failed_hps) > max_failures[done.task.criticality]:
+                        return 1  # max allowed failed hyperperiods exceeded
+            # else:  # job complete, switch to HI-mode
+            #     pass
+        return 0
+
+    max_failures = {'LO': int(thresh_lo * nhyperperiods), 'HI': int(thresh_hi * nhyperperiods)}
+    backlog = BacklogContainer()
+    for task in task_set.tasks:
+        task.exec_times = np.random.choice(a=range(len(task.c_pmf)),
+                                           size=nhyperperiods * (task_set.hyperperiod // task.period),
+                                           p=task.c_pmf)
+        task.failed_hps = set()  # All hyperperiods where an instance of this task missed its deadline
+    i = 0
+    while i < nhyperperiods:
+        # Reset timer, build list of all releases in new hyperperiod
+        t = 0
+        releases = list(task_set.jobs)
+
+        while releases:
+            next_rel = releases.pop(0)
+            event = exec_backlog(next_rel.release - t)
+            if not event:
+                exec_time, next_rel.task.exec_times = next_rel.task.exec_times[-1], next_rel.task.exec_times[:-1]
+                backlog.add(JobInstance(task=next_rel.task, release=(i, next_rel.release), remaining=exec_time))
+            elif event == 1:  # Task DMP exceeded limit
+                return False
+            else:  # Job exceeded c_lo budget, switch to HI-mode
+                for task in task_set.tasks:
+                    if task.criticality == 'LO':
+                        task.failed_hps |= set(range(i, i + hi_mode_duration))
+                        if len(task.failed_hps) > max_failures['LO']:
+                            return False
+                # Jump hi_mode_duration ahead, reset backlog, forward to next job release:
+                i += hi_mode_duration
+                backlog.reset()
+                t = next_rel.release
+                exec_time, next_rel.task.exec_times = next_rel.task.exec_times[-1], next_rel.task.exec_times[:-1]
+                backlog.add(JobInstance(task=next_rel.task, release=(i, next_rel.release), remaining=exec_time))
+
+        event = exec_backlog(task_set.hyperperiod - t)
+        if not event:
+            pass
+        elif event == 1:  # Task DMP exceeded limit
+            return False
+        else:  # Job exceeded c_lo budget, switch to HI-mode
+            for task in task_set.tasks:
+                if task.criticality == 'LO':
+                    task.failed_hps |= set(range(i, i + hi_mode_duration))
+                    if len(task.failed_hps) > max_failures['LO']:
+                        return False
+            # Jump hi_mode_duration ahead, reset backlog, forward to next hyperperiod:
+            i += hi_mode_duration
+            backlog.reset()
+        i += 1
+    return True
+
 
 if __name__ == '__main__':
-    # ts = gen.simple_gen(0, 0.8)
-    # ts.set_priorities_dm()
-    # gen.synth_c_dist(ts, distribution_cls=ExpExceedDist)
-    # print(ts.description)
-    # ts.draw(scale='log')
+    # Plot examples of backlog convergence for different task sets
+    t00 = Task(0, 'LO', 6, 6, 2)
+    t00.c_pmf = np.array([0.0, 0.5, 0.5])
+    t01 = Task(1, 'LO', 8, 8, 2)
+    t01.c_pmf = np.array([0.0, 0.5, 0.5])
+    t02 = Task(2, 'LO', 12, 12, 3)
+    t02.c_pmf = np.array([0.0, (1. / 3), (1. / 3), (1. / 3)])
+    ts0 = TaskSet(0, [t00, t01, t02])
+    synth.set_fixed_priorities(ts0)
+    print(ts0.description)
+    plot_backlogs(ts0, add_stationary=True, path='./figures/ex_backlogs0.png')
 
-    ts = gen.mc_fairgen(0, 0.8)
-    gen.set_priorities_dm(ts)
-    gen.synth_c_dist(ts, distribution_cls=WeibullDist)
-    print(ts.description)
-    ts.draw(scale='linear')
+    t10 = Task(0, 'LO', 6, 6, 3)
+    t10.c_pmf = np.array([0.0, 0.0, 0.5, 0.5])
+    t11 = Task(1, 'LO', 8, 8, 3)
+    t11.c_pmf = np.array([0.0, 0.0, 0.5, 0.5])
+    t12 = Task(2, 'LO', 12, 12, 4)
+    t12.c_pmf = np.array([0.0, 0.0, (1. / 3), (1. / 3), (1. / 3)])
+    ts1 = TaskSet(1, [t10, t11, t12])
+    synth.set_fixed_priorities(ts1)
+    print(ts1.description)
+    plot_backlogs(ts1, add_stationary=True, path='./figures/ex_backlogs1.png')
 
-    # print("draw")
-    # ts = gen.mc_fairgen_det(set_id=0, u_lo=0.95)
-    # ts.set_priorities_rm()
-    # # print(stationary_backlog_iter(task_set=ts))
-    # # stationary_backlog_analytic(ts, p_level=0)
-    # plot_backlogs(ts, add_stationary=True, scale='log')
-    # ts = gen.dummy_taskset()
-    # ts.set_priorities_rm()
-    # p_smc_monte_carlo(ts)
-    # rta_fp(ts)
-    # for task in ts.tasks:
-    #     print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
-    # print(d_smc(ts), d_amc(ts), p_smc(ts), p_amc_black_box(ts))
-
-    # ts_mod, p_switch = dmp_analysis_fp_given_lo_mode(ts)
-    # print("Probability of mode switch:", p_switch)
-    # for task in ts_mod.tasks:
-    #     print("Task ID: %d, DMP: %f, Avg Response Time Dist: %s" % (task.task_id, task.dmp, task.avg_response))
-    # for i in range(100):
-    #     ts = gen.mc_fairgen_stoch(set_id=10, u_lo=0.95, m=1, mode='max', implicit_deadlines=True)
-    #     ts.set_priorities_rm()
-    #     print(p_smc_monte_carlo(ts))
+    t20 = Task(0, 'LO', 6, 6, 4)
+    t20.c_pmf = np.array([0.0, 0.0, (1. / 3), (1. / 3), (1. / 3)])
+    t21 = Task(1, 'LO', 8, 8, 4)
+    t21.c_pmf = np.array([0.0, 0.0, (1. / 3), (1. / 3), (1. / 3)])
+    t22 = Task(2, 'LO', 12, 12, 4)
+    t22.c_pmf = np.array([0.0, 0.0, (1. / 3), (1. / 3), (1. / 3)])
+    ts2 = TaskSet(2, [t20, t21, t22])
+    synth.set_fixed_priorities(ts2)
+    print(ts2.description)
+    plot_backlogs(ts2, add_stationary=False, path='./figures/ex_backlogs2.png')
     pass
-
-
 
 
 """
