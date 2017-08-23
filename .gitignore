@@ -2,3 +2,5 @@
 data/task_sets/
 
 \.idea/
+
+__pycache__/
