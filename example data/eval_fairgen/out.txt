@@ -1,0 +1,8 @@
+Task Set Generation: MC-Fairgen: 41.546
+Evaluation: Schemes
+dSMC: 10.994s
+dAMC: 11.038s
+EDF-VD: 10.922s
+pSMC: 1884.353s
+pAMC-BB: 1477.216s
+pAMC-BB+: 1494.017s
