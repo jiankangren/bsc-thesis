@@ -1,5 +1,0 @@
-Evaluation: Schemes (Monte Carlo)
-pSMC: 1623.465s
-pSMC (Monte Carlo): 37305.045s
-pAMC-BB: 1482.949s
-pAMC-BB-MC (Monte Carlo): 43601.306s

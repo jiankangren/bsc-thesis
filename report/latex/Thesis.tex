@@ -615,7 +615,7 @@ Finally, these methods represent the Monte Carlo Simulations described in \cref{
 \label{sec:eval-mod}
 This module contains a collection of scripts applying the various synthesis and analysis methods defined in the other parts of the framework. Scripts in the synthesis section will generate task sets for different utilization values, defined by the \texttt{utils} parameter. Different schedulability test schemes are then performed in the next section of the module. All task sets as well as the resulting schedulability rates for every scheme are stored on disk, using the \texttt{pickle} module, such that they may be reused at a later time. Finally, the resulting schedulability rates can be plotted against their corresponding task set's \texttt{u\_lo} value. The resulting plots will be discussed in greater detail in \cref{cha:eval}.
 
-A note about performance: Stochastic schedulability tests generally come with high computational cost, mainly stemming from steady-state backlog computation. To alleviate this, all schedulability test scripts use the Python library \texttt{multiprocessing} to spawn a pool of worker processes. Input task sets are then distributed evenly across these processes. The reason for multiple processes rather than threads is the Python Global Interpreter Lock (GIL)\footnote{https://wiki.python.org/moin/GlobalInterpreterLock}, which prohibits parallel execution of multiple threads. See \cref{sec:performance} for a list of speedups this implementation achieves.
+A note about performance: Stochastic schedulability tests generally come with high computational cost, mainly stemming from steady-state backlog computation. To alleviate this, all schedulability test scripts use the Python library \texttt{multiprocessing} to spawn a pool of worker processes. Input task sets are then distributed evenly across these processes. The reason for multiple processes rather than threads is the Python Global Interpreter Lock (GIL)\footnote{\url{https://wiki.python.org/moin/GlobalInterpreterLock}}, which prohibits parallel execution of multiple threads. See \cref{sec:performance} for a list of speedups this implementation achieves.
 
 \section{Energy Module: \texttt{energy.py}}
 \label{sec:energy-mod}
@@ -737,13 +737,9 @@ On these task sets, we now run the following schedulability testing schemes:
 \subsubsection{Interpretation}
 There are a few observations to make in \cref{fig:eval-schemes}:
 \begin{itemize}
-    
-    \item Comparing deterministic schemes to stochastic ones demonstrates the implications of pessimistic worst-case analysis inherent to deterministic schemes. Whereas their schedulability rates start to drop as the system utilization approches 100\% ($C(LO)$ values considered), their probabilistic counterparts use the additional information about execution times and continue to return positive test results well beyond that boundary.
-
+    \item Comparing deterministic schemes to stochastic ones demonstrates the implications of pessimistic worst-case analysis inherent to deterministic schedulability tests. Whereas their schedulability rates start to drop as the system utilization approches 100\% ($C(LO)$ values considered), their probabilistic counterparts use the additional information about execution times and continue to return positive test results well beyond that boundary.
     \item pAMC-BB exhibits a somewhat peculiar line of schedulability rates. There are multiple factors at work here: It turns out, that the assumptions we are making in \cref{subsec:prob-schemes} about the black box pose a severe penalty for switching to HI-mode; so much so, that it causes schedulability rates for lower values of $U(LO)$ to be strictly dominated by the probability of a mode switch to occur in the first place. In fact, almost all task sets in the lower $U(LO)$ ranges that were not schedulable with pAMC-BB had exclusively LO-task DMPs exceed the threshold. This also explains the constant rates for all $U(LO) \leq 1$, as mode switch probability only depends on the number of tasks and the percentile of $C(LO)$ values, but not system utilization. Only when going beyond 100\% utilization, schedulability rates decline; the instant drop there is caused by both synthesis methods doubling the number of tasks when generating $U(LO) > 1$.
-    
     It is clear that the shape of this curve greatly depends on the task sets analysed. To include a version of pAMC-BB that is more comparable to other methods, pAMC-BB+ has been introduced, which, everything else remaining equal, removes the penalty for switching to HI-mode. As expected, this results in rates a bit higher than for pSMC, in a similar way the curves for their deterministic counterparts, dSMC and dAMC, lie in relation to each other.
-
     \item For MC-Fairgen, some task sets at 100\% utilization are still schedulable for deterministic task sets. Note that the values on the x-axis are only the inputs for the synthesis; MC-FairGen has to round $C$ values during discretization, which results in task sets sometimes ending up with $U(LO) < 100\%$. SimpleGen on the other hand rounds up, as to avoid tasks with $C(LO) = 0$.
 \end{itemize}
 
@@ -856,7 +852,7 @@ Although I have tried to implement a wide spectrum of different test schemes and
 
 \begin{appendices}
 \chapter{Final Presentation}
-\chapter{Certificate of Originality}
+\chapter{Declaration of Originality}
 \chapter{Codebase}
 All source code files as well as other documents and data involved in this thesis are available online under \url{https://github.com/luca-stalder/bsc-thesis}. See the read-me file contained there for further details.
 \end{appendices}
